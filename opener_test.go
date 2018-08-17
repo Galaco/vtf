@@ -6,14 +6,14 @@ import (
 )
 
 func TestReadFromFile(t *testing.T) {
-	_,err := ReadFromFile("data/test.vtf")
+	_,err := ReadFromFile("samples/read/test.vtf")
 	if err != nil {
 		t.Error(err)
 	}
 }
 
 func TestReadFromStream(t *testing.T) {
-	f, err := os.Open("data/test.vtf")
+	f, err := os.Open("samples/read/test.vtf")
 	if err != nil {
 		t.Error(err)
 	}
