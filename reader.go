@@ -23,9 +23,18 @@ func (reader *Reader) Read() (*Vtf, error) {
 	}
 
 	header,err := reader.parseHeader(buf.Bytes())
+	if err != nil {
+		return nil,err
+	}
 	resourceData,err := reader.parseOtherResourceData(header, buf.Bytes())
-	reader.parseLowResImageData(header, buf.Bytes())
-	reader.parseImageData(header, buf.Bytes()[128:])
+	if err != nil {
+		return nil,err
+	}
+	lowResImage,err := reader.parseLowResImageData(header, buf.Bytes())
+	if err != nil {
+		return nil,err
+	}
+	highResImage,err := reader.parseImageData(header, buf.Bytes()[128:])
 	if err != nil {
 		return nil,err
 	}
@@ -33,6 +42,8 @@ func (reader *Reader) Read() (*Vtf, error) {
 	return &Vtf{
 		header: *header,
 		resources: resourceData,
+		lowResolutionImageData: lowResImage,
+		highResolutionImageData: highResImage,
 	},nil
 }
 
@@ -88,47 +99,60 @@ func (reader *Reader) parseLowResImageData(header *header, buffer []byte) ([]uin
 }
 
 // Parse all image data here
-func (reader *Reader) parseImageData(header *header, buffer []byte) {
+func (reader *Reader) parseImageData(header *header, buffer []byte) ([][][][][]byte,error) {
 	bufferOffset := 0
 	format := colourformat.ColorFormat(header.HighResImageFormat)
 	width := int(header.LowResImageWidth) << 2
 	height := int(header.LowResImageHeight) << 2
+
+	mipMaps := make([][][][][]byte, header.MipmapCount)
 	// Iterate mipmap; smallest to largest
 	for mipmapIdx := uint8(0); mipmapIdx < header.MipmapCount; mipmapIdx++ {
+		frames := make([][][][]byte, header.Frames)
+
 		// Frame by frame; first to last
 		for frameIdx := uint16(0); frameIdx < header.Frames; frameIdx++ {
+			faces := make([][][]byte, 1)
 			// Face by face; first to last
 			// @TODO is this correct to use depth? How to know how many faces there are
-			for faceIdx := uint16(0); faceIdx < header.Depth; faceIdx++ {
+			for faceIdx := uint16(0); faceIdx < 1; faceIdx++ {
+				zSlices := make([][]byte, 1)
 				// Z Slice by Z Slice; first to last
 				// @TODO wtf is a z slice, and how do we know how many there are
 				for sliceIdx := uint16(0); sliceIdx < 1; sliceIdx++ {
 					dataSize := colourformat.GetLengthInBytesForFormat(format, width, height)
-					getRawImageDataFromBuffer(buffer[bufferOffset:bufferOffset+dataSize], format, width, height)
+					img,_ := getRawImageDataFromBuffer(buffer[bufferOffset:bufferOffset+dataSize], format, width, height)
 
 					bufferOffset += dataSize
+					zSlices[sliceIdx] = img
 				}
+				faces[faceIdx] = zSlices
 			}
+			frames[frameIdx] = faces
 		}
+		mipMaps[mipmapIdx] = frames
 	}
+
+	return mipMaps,nil
 }
 
 func getRawImageDataFromBuffer(buffer []byte, format colourformat.ColorFormat, width int, height int) ([]byte,error) {
 	switch format {
 	case colourformat.RGB888:
-		return buffer,nil
+		return buffer, nil
 	case colourformat.Dxt1:
-		decompressed,err := colourformat.FromDXT1(width, height, buffer)
+		decompressed, err := colourformat.FromDXT1(width, height, buffer)
 		if err != nil {
-			return nil,err
+			return nil, err
 		}
-		return decompressed,nil
+		return decompressed, nil
 	case colourformat.Dxt5:
-		decompressed,err := colourformat.FromDXT5(width, height, buffer)
+		decompressed, err := colourformat.FromDXT5(width, height, buffer)
 		if err != nil {
-			return nil,err
+			return nil, err
 		}
-		return decompressed,nil
+		return decompressed, nil
+	default:
+		return nil, errors.New("unsupported image format: " + string(format))
 	}
-	return nil,errors.New("unsupported image format")
 }

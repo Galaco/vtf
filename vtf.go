@@ -31,7 +31,7 @@ func (vtf *Vtf) GetMipmapsForFrame(frame int) [][]byte {
 	return ret
 }
 
-// Get the best ossible resolution for a single frame in the vtf
+// Get the best possible resolution for a single frame in the vtf
 func (vtf* Vtf) GetHighestResolutionImageForFrame(frame int) []byte {
 	// @TODO This currently only supports single face, single Z Slice images
 	return vtf.highResolutionImageData[vtf.header.MipmapCount-1][frame][0][0]
