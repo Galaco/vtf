@@ -6,8 +6,9 @@ import (
 )
 
 func main() {
-	_,err := vtf.ReadFromFile("samples/read/test.vtf")
+	f,err := vtf.ReadFromFile("samples/read/test3.vtf")
 	if err != nil {
 		log.Fatal(err)
 	}
+	log.Println(f.GetHeader().MipmapCount)
 }

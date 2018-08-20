@@ -34,7 +34,11 @@ func (reader *Reader) Read() (*Vtf, error) {
 	if err != nil {
 		return nil,err
 	}
-	highResImage,err := reader.parseImageData(header, buf.Bytes()[128:])
+
+	lowResImageCompressedSize := (int(header.LowResImageWidth) *
+		int(header.LowResImageHeight)) *
+		int(colourformat.BytesPerPixel(colourformat.ColorFormat(header.LowResImageFormat)))
+	highResImage,err := reader.parseImageData(header, buf.Bytes()[header.HeaderSize + uint32(lowResImageCompressedSize):])
 	if err != nil {
 		return nil,err
 	}
@@ -77,6 +81,7 @@ func (reader *Reader) parseHeader(buffer []byte) (*header,error) {
 
 // Returns resource data for 7.3+ images
 func (reader *Reader) parseOtherResourceData(header *header, buffer []byte) ([]byte, error) 	{
+	// validate header version
 	if (header.Version[0]*10 + header.Version[1] < 73) || header.NumResource == 0 {
 		return nil,nil
 	}
@@ -85,8 +90,7 @@ func (reader *Reader) parseOtherResourceData(header *header, buffer []byte) ([]b
 }
 
 func (reader *Reader) parseLowResImageData(header *header, buffer []byte) ([]uint8,error) {
-	bufferSize := (header.LowResImageWidth * header.LowResImageHeight) / 2 //DXT1 texture compression manages 50% compression
-
+	bufferSize := (int(header.LowResImageWidth) * int(header.LowResImageHeight)) / 2 //DXT1 texture compression manages 50% compression
 	imgBuffer := make([]byte, bufferSize)
 	byteReader := bytes.NewReader(buffer[96:96+bufferSize])
 	sectionReader := io.NewSectionReader(byteReader, 0, int64(bufferSize))
@@ -102,12 +106,39 @@ func (reader *Reader) parseLowResImageData(header *header, buffer []byte) ([]uin
 func (reader *Reader) parseImageData(header *header, buffer []byte) ([][][][][]byte,error) {
 	bufferOffset := 0
 	format := colourformat.ColorFormat(header.HighResImageFormat)
-	width := int(header.LowResImageWidth) << 2
-	height := int(header.LowResImageHeight) << 2
+
+
+	dataSize := colourformat.GetImageSizeInBytes(format, int(header.Width), int(header.Height))
+	imgOffset := (len(buffer)) - dataSize
+	img,err := getRawImageDataFromBuffer(buffer[imgOffset:], format, int(header.Width), int(header.Height))
+	if err != nil {
+		return nil,err
+	}
+	ret := make([][][][][]byte, 1)
+	ret[0] = make([][][][]byte, 1)
+	ret[0][0] = make([][][]byte, 1)
+	ret[0][0][0] = make([][]byte, 1)
+	ret[0][0][0][0] = img
+	header.Frames = 0
+	return ret,nil
+
+	// IGNORE MIPMAPS
+	width := int(header.LowResImageWidth)
+	height := int(header.LowResImageHeight)
+
+	for {
+		if width == 1 || height == 1 {
+			break
+		}
+		width /= 2
+		height /= 2
+	}
 
 	mipMaps := make([][][][][]byte, header.MipmapCount)
 	// Iterate mipmap; smallest to largest
 	for mipmapIdx := uint8(0); mipmapIdx < header.MipmapCount; mipmapIdx++ {
+		width *= 2
+		height *= 2
 		frames := make([][][][]byte, header.Frames)
 
 		// Frame by frame; first to last
@@ -115,12 +146,12 @@ func (reader *Reader) parseImageData(header *header, buffer []byte) ([][][][][]b
 			faces := make([][][]byte, 1)
 			// Face by face; first to last
 			// @TODO is this correct to use depth? How to know how many faces there are
-			for faceIdx := uint16(0); faceIdx < 1; faceIdx++ {
+			for faceIdx := uint16(0); faceIdx < header.Depth; faceIdx++ {
 				zSlices := make([][]byte, 1)
 				// Z Slice by Z Slice; first to last
 				// @TODO wtf is a z slice, and how do we know how many there are
 				for sliceIdx := uint16(0); sliceIdx < 1; sliceIdx++ {
-					dataSize := colourformat.GetLengthInBytesForFormat(format, width, height)
+					dataSize := colourformat.GetImageSizeInBytes(format, width, height)
 					img,_ := getRawImageDataFromBuffer(buffer[bufferOffset:bufferOffset+dataSize], format, width, height)
 
 					bufferOffset += dataSize
@@ -138,6 +169,8 @@ func (reader *Reader) parseImageData(header *header, buffer []byte) ([][][][][]b
 
 func getRawImageDataFromBuffer(buffer []byte, format colourformat.ColorFormat, width int, height int) ([]byte,error) {
 	switch format {
+	case colourformat.BGRX8888:
+		return colourformat.FromBGRX8888(width, height, buffer)
 	case colourformat.RGB888:
 		return buffer, nil
 	case colourformat.Dxt1:

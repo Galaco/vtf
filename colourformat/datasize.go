@@ -1,13 +1,33 @@
 package colourformat
 
 
-func GetLengthInBytesForFormat(index ColorFormat, width int, height int) int {
+func GetImageSizeInBytes(index ColorFormat, width int, height int) int {
 	switch index {
+	case BGRX8888:
+		return int(float32(width * height) * BytesPerPixel(index))
 	case RGB888:
-		return (width * height) * 3
+		return int(float32(width * height) * BytesPerPixel(index))
 	case Dxt1:
+		return int(float32(width * height) * BytesPerPixel(index))
 	case Dxt5:
-		return (width * height * 3) / 2
+		return int(float32(width * height) * BytesPerPixel(index))
+	default:
+		return 0
+	}
+
+	return 0
+}
+
+func BytesPerPixel(format ColorFormat) float32 {
+	switch format {
+	case BGRX8888:
+		return 4
+	case RGB888:
+		return 3
+	case Dxt1:
+		return 0.5
+	case Dxt5:
+		return 1
 	}
 
 	return 0

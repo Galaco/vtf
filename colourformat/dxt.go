@@ -18,9 +18,6 @@ func FromDXT1(width int, height int, imagedata []byte) ([]uint8,error) {
 		return nil,err
 	}
 
-	out, _ := os.Create("out.png")
-	err = png.Encode(out, img)
-
 	return img.Pix, nil
 }
 
