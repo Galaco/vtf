@@ -35,9 +35,10 @@ func (reader *Reader) Read() (*Vtf, error) {
 		return nil,err
 	}
 
-	lowResImageCompressedSize := (int(header.LowResImageWidth) *
-		int(header.LowResImageHeight)) *
-		int(colourformat.BytesPerPixel(colourformat.ColorFormat(header.LowResImageFormat)))
+	lowResImageCompressedSize := colourformat.GetImageSizeInBytes(
+		colourformat.ColorFormat(header.LowResImageFormat),
+		int(header.LowResImageWidth),
+		int(header.LowResImageHeight))
 	highResImage,err := reader.parseImageData(header, buf.Bytes()[header.HeaderSize + uint32(lowResImageCompressedSize):])
 	if err != nil {
 		return nil,err
@@ -90,7 +91,15 @@ func (reader *Reader) parseOtherResourceData(header *header, buffer []byte) ([]b
 }
 
 func (reader *Reader) parseLowResImageData(header *header, buffer []byte) ([]uint8,error) {
-	bufferSize := (int(header.LowResImageWidth) * int(header.LowResImageHeight)) / 2 //DXT1 texture compression manages 50% compression
+	padWidth := int(header.LowResImageWidth)
+	if header.LowResImageWidth % 4 != 0 {
+		padWidth += (4 - (int(header.LowResImageWidth) % 4))
+	}
+	padHeight := int(header.LowResImageHeight)
+	if header.LowResImageHeight % 4 != 0 {
+		padHeight += (4 - (int(header.LowResImageHeight) % 4))
+	}
+	bufferSize := (padWidth * padHeight) / 2 //DXT1 texture compression manages 50% compression
 	imgBuffer := make([]byte, bufferSize)
 	byteReader := bytes.NewReader(buffer[96:96+bufferSize])
 	sectionReader := io.NewSectionReader(byteReader, 0, int64(bufferSize))
@@ -99,7 +108,7 @@ func (reader *Reader) parseLowResImageData(header *header, buffer []byte) ([]uin
 		return nil, err
 	}
 
-	return colourformat.FromDXT1(int(header.LowResImageWidth), int(header.LowResImageHeight), imgBuffer)
+	return imgBuffer, nil
 }
 
 // Parse all image data here
@@ -107,18 +116,13 @@ func (reader *Reader) parseImageData(header *header, buffer []byte) ([][][][][]b
 	bufferOffset := 0
 	format := colourformat.ColorFormat(header.HighResImageFormat)
 
-
 	dataSize := colourformat.GetImageSizeInBytes(format, int(header.Width), int(header.Height))
 	imgOffset := (len(buffer)) - dataSize
-	img,err := getRawImageDataFromBuffer(buffer[imgOffset:], format, int(header.Width), int(header.Height))
-	if err != nil {
-		return nil,err
-	}
 	ret := make([][][][][]byte, 1)
 	ret[0] = make([][][][]byte, 1)
 	ret[0][0] = make([][][]byte, 1)
 	ret[0][0][0] = make([][]byte, 1)
-	ret[0][0][0][0] = img
+	ret[0][0][0][0] = buffer[imgOffset:]
 	header.Frames = 0
 	return ret,nil
 
@@ -152,7 +156,7 @@ func (reader *Reader) parseImageData(header *header, buffer []byte) ([][][][][]b
 				// @TODO wtf is a z slice, and how do we know how many there are
 				for sliceIdx := uint16(0); sliceIdx < 1; sliceIdx++ {
 					dataSize := colourformat.GetImageSizeInBytes(format, width, height)
-					img,_ := getRawImageDataFromBuffer(buffer[bufferOffset:bufferOffset+dataSize], format, width, height)
+					img := buffer[bufferOffset:bufferOffset+dataSize]
 
 					bufferOffset += dataSize
 					zSlices[sliceIdx] = img
@@ -165,27 +169,4 @@ func (reader *Reader) parseImageData(header *header, buffer []byte) ([][][][][]b
 	}
 
 	return mipMaps,nil
-}
-
-func getRawImageDataFromBuffer(buffer []byte, format colourformat.ColorFormat, width int, height int) ([]byte,error) {
-	switch format {
-	case colourformat.BGRX8888:
-		return colourformat.FromBGRX8888(width, height, buffer)
-	case colourformat.RGB888:
-		return buffer, nil
-	case colourformat.Dxt1:
-		decompressed, err := colourformat.FromDXT1(width, height, buffer)
-		if err != nil {
-			return nil, err
-		}
-		return decompressed, nil
-	case colourformat.Dxt5:
-		decompressed, err := colourformat.FromDXT5(width, height, buffer)
-		if err != nil {
-			return nil, err
-		}
-		return decompressed, nil
-	default:
-		return nil, errors.New("unsupported image format: " + string(format))
-	}
 }
