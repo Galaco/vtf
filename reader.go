@@ -26,6 +26,7 @@ func (reader *Reader) Read() (*Vtf, error) {
 	if err != nil {
 		return nil,err
 	}
+
 	resourceData,err := reader.parseOtherResourceData(header, buf.Bytes())
 	if err != nil {
 		return nil,err
@@ -84,20 +85,21 @@ func (reader *Reader) parseHeader(buffer []byte) (*header,error) {
 func (reader *Reader) parseOtherResourceData(header *header, buffer []byte) ([]byte, error) 	{
 	// validate header version
 	if (header.Version[0]*10 + header.Version[1] < 73) || header.NumResource == 0 {
-		return nil,nil
+		header.Depth = 0
+		header.NumResource = 0
+		return []byte{},nil
 	}
 
-	return nil,nil
+	return []byte{},nil
 }
 
 func (reader *Reader) parseLowResImageData(header *header, buffer []byte) ([]uint8,error) {
 	padWidth := int(header.LowResImageWidth)
-	if header.LowResImageWidth % 4 != 0 {
-		padWidth += (4 - (int(header.LowResImageWidth) % 4))
-	}
 	padHeight := int(header.LowResImageHeight)
-	if header.LowResImageHeight % 4 != 0 {
-		padHeight += (4 - (int(header.LowResImageHeight) % 4))
+	if header.LowResImageWidth % 4 != 0 {
+		padWidth += 4 - (int(header.LowResImageWidth) % 4)
+	} else if header.LowResImageHeight % 4 != 0 {
+		padHeight += 4 - (int(header.LowResImageHeight) % 4)
 	}
 	bufferSize := (padWidth * padHeight) / 2 //DXT1 texture compression manages 50% compression
 	imgBuffer := make([]byte, bufferSize)
@@ -113,48 +115,41 @@ func (reader *Reader) parseLowResImageData(header *header, buffer []byte) ([]uin
 
 // Parse all image data here
 func (reader *Reader) parseImageData(header *header, buffer []byte) ([][][][][]byte,error) {
-	bufferOffset := 0
-	format := colourformat.ColorFormat(header.HighResImageFormat)
+	if header.Depth > 1 {
+		return [][][][][]byte{}, errors.New("only vtf textures with depth 1 are supported")
+	}
+	depth := header.Depth
 
-	dataSize := colourformat.GetImageSizeInBytes(format, int(header.Width), int(header.Height))
-	imgOffset := (len(buffer)) - dataSize
-	ret := make([][][][][]byte, 1)
-	ret[0] = make([][][][]byte, 1)
-	ret[0][0] = make([][][]byte, 1)
-	ret[0][0][0] = make([][]byte, 1)
-	ret[0][0][0][0] = buffer[imgOffset:]
-	header.Frames = 0
-	return ret,nil
-
-	// IGNORE MIPMAPS
-	width := int(header.LowResImageWidth)
-	height := int(header.LowResImageHeight)
-
-	for {
-		if width == 1 || height == 1 {
-			break
-		}
-		width /= 2
-		height /= 2
+	if depth == 0 {
+		depth = 1
 	}
 
-	mipMaps := make([][][][][]byte, header.MipmapCount)
-	// Iterate mipmap; smallest to largest
-	for mipmapIdx := uint8(0); mipmapIdx < header.MipmapCount; mipmapIdx++ {
-		width *= 2
-		height *= 2
-		frames := make([][][][]byte, header.Frames)
+	numZSlice := uint16(1)
+	bufferOffset := 0
 
+	width := int(header.Width)
+	height := int(header.Height)
+	format := colourformat.ColorFormat(header.HighResImageFormat)
+
+	// Force mipmap count
+
+	header.MipmapCount = 1
+	bufferOffset = (len(buffer) - 1) - colourformat.GetImageSizeInBytes(format, width, height)
+
+	// Iterate mipmap; smallest to largest
+	mipMaps := make([][][][][]byte, header.MipmapCount)
+	for mipmapIdx := uint8(0); mipmapIdx < header.MipmapCount; mipmapIdx++ {
 		// Frame by frame; first to last
+		frames := make([][][][]byte, header.Frames)
 		for frameIdx := uint16(0); frameIdx < header.Frames; frameIdx++ {
 			faces := make([][][]byte, 1)
 			// Face by face; first to last
 			// @TODO is this correct to use depth? How to know how many faces there are
-			for faceIdx := uint16(0); faceIdx < header.Depth; faceIdx++ {
+			for faceIdx := uint16(0); faceIdx < depth; faceIdx++ {
 				zSlices := make([][]byte, 1)
 				// Z Slice by Z Slice; first to last
 				// @TODO wtf is a z slice, and how do we know how many there are
-				for sliceIdx := uint16(0); sliceIdx < 1; sliceIdx++ {
+				for sliceIdx := uint16(0); sliceIdx < numZSlice; sliceIdx++ {
 					dataSize := colourformat.GetImageSizeInBytes(format, width, height)
 					img := buffer[bufferOffset:bufferOffset+dataSize]
 
