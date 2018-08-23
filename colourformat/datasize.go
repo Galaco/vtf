@@ -8,7 +8,11 @@ func GetImageSizeInBytes(index ColorFormat, width int, height int) int {
 	case RGB888:
 		return int(float32(width * height) * BytesPerPixel(index))
 	case Dxt1:
-		return int(float32(width * height) * BytesPerPixel(index))
+		size := int(float32(width * height) * BytesPerPixel(index))
+		if size < 8 {
+			size = 8
+		}
+		return size
 	case Dxt5:
 		return int(float32(width * height) * BytesPerPixel(index))
 	default:

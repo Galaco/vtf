@@ -127,14 +127,11 @@ func (reader *Reader) parseImageData(header *header, buffer []byte) ([][][][][]b
 	numZSlice := uint16(1)
 	bufferOffset := 0
 
-	width := int(header.Width)
-	height := int(header.Height)
+	width := int(1)
+	height := int(1)
+	ratio := float32(header.Width) / float32(header.Height)
+
 	format := colourformat.ColorFormat(header.HighResImageFormat)
-
-	// Force mipmap count
-
-	header.MipmapCount = 1
-	bufferOffset = (len(buffer) - 1) - colourformat.GetImageSizeInBytes(format, width, height)
 
 	// Iterate mipmap; smallest to largest
 	mipMaps := make([][][][][]byte, header.MipmapCount)
@@ -151,6 +148,9 @@ func (reader *Reader) parseImageData(header *header, buffer []byte) ([][][][][]b
 				// @TODO wtf is a z slice, and how do we know how many there are
 				for sliceIdx := uint16(0); sliceIdx < numZSlice; sliceIdx++ {
 					dataSize := colourformat.GetImageSizeInBytes(format, width, height)
+					if len(buffer) < bufferOffset+dataSize {
+						return mipMaps,errors.New("expected data size is smaller than actual")
+					}
 					img := buffer[bufferOffset:bufferOffset+dataSize]
 
 					bufferOffset += dataSize
@@ -161,6 +161,18 @@ func (reader *Reader) parseImageData(header *header, buffer []byte) ([][][][][]b
 			frames[frameIdx] = faces
 		}
 		mipMaps[mipmapIdx] = frames
+
+		// Ensure that we maintain aspect ratio when scaling up mipmaps
+		if float32(width / height) != ratio {
+			if ratio > 1 {
+				width = width * 2
+			} else {
+				height = height * 2
+			}
+		} else {
+			width = width * 2
+			height = height * 2
+		}
 	}
 
 	return mipMaps,nil
