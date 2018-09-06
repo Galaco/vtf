@@ -129,6 +129,21 @@ func (reader *Reader) parseImageData(header *header, buffer []byte) ([][][][][]b
 
 	width := int(1)
 	height := int(1)
+
+	// Set the initial size to the smallest mipmap
+	// This solves rare issues with there being an abnormal number of mipmaps
+	width = int(header.Width)
+	height = int(header.Height)
+	for i := uint8(0); i < header.MipmapCount; i++ {
+		width = width / 2
+		height = height / 2
+	}
+	if width < 1 {
+		width = 1
+	}
+	if height < 1 {
+		height = 1
+	}
 	ratio := float32(header.Width) / float32(header.Height)
 
 	format := colourformat.ColorFormat(header.HighResImageFormat)
