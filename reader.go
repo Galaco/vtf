@@ -96,6 +96,15 @@ func (reader *Reader) parseOtherResourceData(header *header, buffer []byte) ([]b
 func (reader *Reader) parseLowResImageData(header *header, buffer []byte) ([]uint8,error) {
 	padWidth := int(header.LowResImageWidth)
 	padHeight := int(header.LowResImageHeight)
+
+	// Safeguard for empty low res data
+	if padWidth == 0 || padHeight == 0 {
+		header.LowResImageWidth = 1
+		header.LowResImageHeight = 1
+		header.LowResImageFormat = 3
+		return []uint8{0,0,0},nil
+	}
+
 	if header.LowResImageWidth % 4 != 0 {
 		padWidth += 4 - (int(header.LowResImageWidth) % 4)
 	} else if header.LowResImageHeight % 4 != 0 {

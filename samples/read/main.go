@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	_,err := vtf.ReadFromFile("samples/read/test3.vtf")
+	_,err := vtf.ReadFromFile("samples/read/test.vtf")
 	if err != nil {
 		log.Fatal(err)
 	}
