@@ -11,6 +11,8 @@ Parse Valves own .vtf format (literally Valve Texture Format) for Source Engine 
 ```
 import (  
 	"github.com/galaco/vtf"
+	"log"
+	"os"
 )
 
 func main() {
@@ -26,8 +28,6 @@ func main() {
 ```
 
 ### Whats missing
-* Colour format documentation
-* No flag definitions
 * Resource data is ignored (besides mipmaps) in 7.3+
 * Texture with depth > 1 are unsupported. This is very rare
 * Textures with zslices > 1 are unsupported. This is very rare
