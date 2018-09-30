@@ -5,7 +5,7 @@ Parse Valves own .vtf format (literally Valve Texture Format) for Source Engine 
 * Supports versions 7.1-7.5
 * Full header data
 * Low resolution thumbnail loading
-* Complete mipmap loading
+* Complete mipmap + high-resolution texture loading
 
 ### Usage
 ```
@@ -36,3 +36,6 @@ func main() {
 ### What won't this ever do?
 * Colour format transformation. Header properties `LowResImageFormat` and `HighResImageFormat` will provide the format.
 * (Probably) support depths or zslices > 1
+
+### Contributing
+No where near all the possible texture configurations have been tested. It's possible some could cause issues. Any issues (including offending file) are greatly appreciated.
