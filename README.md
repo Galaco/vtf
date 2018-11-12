@@ -1,3 +1,7 @@
+[![GoDoc](https://godoc.org/github.com/Galaco/vtf?status.svg)](https://godoc.org/github.com/Galaco/vtf)
+[![Go report card](https://goreportcard.com/badge/github.com/galaco/vtf)](https://goreportcard.com/badge/github.com/galaco/vtf)
+
+
 # vtf
 Parse Valves own .vtf format (literally Valve Texture Format) for Source Engine texture.
 

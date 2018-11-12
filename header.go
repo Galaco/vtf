@@ -1,15 +1,20 @@
 package vtf
 
-type header struct {
-	headerCommon
-	header72
-	header73
+// Header: VTF Header format
+// Contents includes information for all versions
+// Its up to the implementee to decide what properties they need
+// based on the version
+type Header struct {
+	HeaderCommon
+	Header72
+	Header73
 }
 
-type headerCommon struct {
+// HeaderCommon: All VTF versions start with these properties
+type HeaderCommon struct {
 	Signature [4]byte						//File signature char
 	Version [2]uint32						//Version[0].version[1] e.g. 7.2 uint
-	HeaderSize uint32						//Size of header (16 byte aligned, currently 80bytes) uint
+	HeaderSize uint32						//Size of Header (16 byte aligned, currently 80bytes) uint
 	Width uint16							//Width of largest mipmap (^2) ushort
 	Height uint16							//Height of largest mipmap (^2) ushort
 	Flags uint32							//VTF Flags uint
@@ -26,11 +31,13 @@ type headerCommon struct {
 	LowResImageHeight uint8					//Low resolution image height uchar
 }
 
-type header72 struct {
+// Header72: v7.2+ includes these properties
+type Header72 struct {
 	Depth uint16							//Depth of the largest mipmap in pixels (^2) ushort
 }
 
-type header73 struct {
+// Header73: v7.3+ includes these properties
+type Header73 struct {
 	_ [3]byte
 	NumResource uint32						// Number of resources this vtf has
 }
