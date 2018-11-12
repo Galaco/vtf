@@ -1,12 +1,12 @@
 package vtf
 
 import (
-	"github.com/galaco/vtf/utils"
-	"io"
 	"bytes"
 	"encoding/binary"
 	"errors"
 	"github.com/galaco/vtf/format"
+	"github.com/galaco/vtf/utils"
+	"io"
 )
 
 const headerSize = 96
@@ -21,45 +21,45 @@ type Reader struct {
 // due to tampered Header data.
 func (reader *Reader) Read() (*Vtf, error) {
 	buf := bytes.Buffer{}
-	_,err := buf.ReadFrom(reader.stream)
+	_, err := buf.ReadFrom(reader.stream)
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
 
 	// Header
-	header,err := reader.parseHeader(buf.Bytes())
+	header, err := reader.parseHeader(buf.Bytes())
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
 
 	// Tesources - in vtf 7.3+ only
-	resourceData,err := reader.parseOtherResourceData(header, buf.Bytes())
+	resourceData, err := reader.parseOtherResourceData(header, buf.Bytes())
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
 
 	// Low resolution preview texture
-	lowResImage,err := reader.readLowResolutionMipmap(header, buf.Bytes())
+	lowResImage, err := reader.readLowResolutionMipmap(header, buf.Bytes())
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
 
 	// Mipmaps
-	highResImage,err := reader.readMipmaps(header, buf.Bytes()[header.HeaderSize + uint32(len(lowResImage)):])
+	highResImage, err := reader.readMipmaps(header, buf.Bytes()[header.HeaderSize+uint32(len(lowResImage)):])
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
 
 	return &Vtf{
-		header: *header,
-		resources: resourceData,
-		lowResolutionImageData: lowResImage,
+		header:                  *header,
+		resources:               resourceData,
+		lowResolutionImageData:  lowResImage,
 		highResolutionImageData: highResImage,
-	},nil
+	}, nil
 }
 
 // parseHeader: Parse vtf Header.
-func (reader *Reader) parseHeader(buffer []byte) (*Header,error) {
+func (reader *Reader) parseHeader(buffer []byte) (*Header, error) {
 
 	// We know Header is 96 bytes
 	// Note it *may* not be someday...
@@ -77,39 +77,39 @@ func (reader *Reader) parseHeader(buffer []byte) (*Header,error) {
 	header := Header{}
 	err = binary.Read(bytes.NewBuffer(headerBytes[:]), binary.LittleEndian, &header)
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
 	if string(header.Signature[:4]) != "VTF\x00" {
-		return nil,errors.New("Header signature does not match: VTF\x00")
+		return nil, errors.New("Header signature does not match: VTF\x00")
 	}
 
-	return &header,nil
+	return &header, nil
 }
 
 // parseOtherResourceData: Returns resource data for 7.3+ images
-func (reader *Reader) parseOtherResourceData(header *Header, buffer []byte) ([]byte, error) 	{
+func (reader *Reader) parseOtherResourceData(header *Header, buffer []byte) ([]byte, error) {
 	// validate Header version
-	if (header.Version[0]*10 + header.Version[1] < 73) || header.NumResource == 0 {
+	if (header.Version[0]*10+header.Version[1] < 73) || header.NumResource == 0 {
 		header.Depth = 0
 		header.NumResource = 0
-		return []byte{},nil
+		return []byte{}, nil
 	}
 
-	return []byte{},nil
+	return []byte{}, nil
 }
 
 // readLowResolutionMipmap: Reads the low resolution texture information
 // This is normally what you see previewed in Hammer texture browser.
 // The largest axis should always be 16 wide/tall. The smallest can be any value,
 // but is padded out to divisible by 4 for Dxt1 compressionn reasons
-func (reader *Reader) readLowResolutionMipmap(header *Header, buffer []byte) ([]uint8,error) {
+func (reader *Reader) readLowResolutionMipmap(header *Header, buffer []byte) ([]uint8, error) {
 	bufferSize := utils.ComputeSizeOfMipmapData(
 		int(header.LowResImageWidth),
 		int(header.LowResImageHeight),
 		format.Dxt1)
 
 	imgBuffer := make([]byte, bufferSize)
-	byteReader := bytes.NewReader(buffer[headerSize:headerSize + bufferSize])
+	byteReader := bytes.NewReader(buffer[headerSize : headerSize+bufferSize])
 	sectionReader := io.NewSectionReader(byteReader, 0, int64(bufferSize))
 	_, err := sectionReader.Read(imgBuffer)
 	if err != nil {
@@ -122,7 +122,7 @@ func (reader *Reader) readLowResolutionMipmap(header *Header, buffer []byte) ([]
 // readMipmaps: Read all mipmaps
 // Returned format is a bit odd, but is just a set of flat arrays containing arrays:
 // mipmap[frame[face[slice[RGBA]]]
-func (reader *Reader) readMipmaps(header *Header, buffer []byte) ([][][][][]byte,error) {
+func (reader *Reader) readMipmaps(header *Header, buffer []byte) ([][][][][]byte, error) {
 	if header.Depth > 1 {
 		return [][][][][]byte{}, errors.New("only vtf textures with depth 1 are supported")
 	}
@@ -160,9 +160,9 @@ func (reader *Reader) readMipmaps(header *Header, buffer []byte) ([][][][][]byte
 						mipmapSizes[mipmapIdx][1],
 						storedFormat)
 					if len(buffer) < bufferOffset+bufferSize {
-						return mipMaps,errors.New("expected data size is smaller than actual")
+						return mipMaps, errors.New("expected data size is smaller than actual")
 					}
-					img := buffer[bufferOffset:bufferOffset+bufferSize]
+					img := buffer[bufferOffset : bufferOffset+bufferSize]
 
 					bufferOffset += bufferSize
 					zSlices[sliceIdx] = img
@@ -176,5 +176,5 @@ func (reader *Reader) readMipmaps(header *Header, buffer []byte) ([][][][][]byte
 		// Ensure that we maintain aspect ratio when scaling up mipmaps
 	}
 
-	return mipMaps,nil
+	return mipMaps, nil
 }

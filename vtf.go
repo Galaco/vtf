@@ -28,7 +28,7 @@ func (vtf *Vtf) GetHighResImageData() [][][][][]byte {
 func (vtf *Vtf) GetMipmapsForFrame(frame int) [][]byte {
 	ret := make([][]byte, vtf.header.MipmapCount)
 
-	for idx,mipmap := range vtf.highResolutionImageData {
+	for idx, mipmap := range vtf.highResolutionImageData {
 		ret[idx] = mipmap[frame][0][0]
 	}
 
@@ -37,7 +37,7 @@ func (vtf *Vtf) GetMipmapsForFrame(frame int) [][]byte {
 
 // GetHighestResolutionImageForFrame: Get the best possible resolution
 // for a single frame in the vtf
-func (vtf* Vtf) GetHighestResolutionImageForFrame(frame int) []byte {
+func (vtf *Vtf) GetHighestResolutionImageForFrame(frame int) []byte {
 	// @TODO This currently only supports single face, single Z Slice images
-	return vtf.highResolutionImageData[vtf.header.MipmapCount - 1][frame][0][0]
+	return vtf.highResolutionImageData[vtf.header.MipmapCount-1][frame][0][0]
 }

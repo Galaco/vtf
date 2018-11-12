@@ -3,7 +3,6 @@ package utils
 import (
 	"github.com/galaco/vtf/format"
 	"math"
-
 )
 
 // computeMipmapSizes: Compute all mipmap sizes

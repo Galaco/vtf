@@ -1,12 +1,12 @@
 package main
 
 import (
-	"log"
 	"github.com/galaco/vtf"
+	"log"
 )
 
 func main() {
-	_,err := vtf.ReadFromFile("samples/read/test.vtf")
+	_, err := vtf.ReadFromFile("samples/read/test.vtf")
 	if err != nil {
 		log.Fatal(err)
 	}

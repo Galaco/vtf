@@ -1,13 +1,13 @@
 package vtf
 
 import (
-	"os"
 	"io"
+	"os"
 )
 
 // ReadFromStream: Load vtf from standard
 // io.Reader stream,
-func ReadFromStream(stream io.Reader) (*Vtf, error){
+func ReadFromStream(stream io.Reader) (*Vtf, error) {
 	reader := &Reader{
 		stream: stream,
 	}
@@ -18,13 +18,13 @@ func ReadFromStream(stream io.Reader) (*Vtf, error){
 // ReadFromFile: ReadFromStream wrapper to load directly from
 // filesystem. Exists for convenience
 func ReadFromFile(filepath string) (*Vtf, error) {
-	file,err := os.Open(filepath)
+	file, err := os.Open(filepath)
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
 
 	defer file.Close()
 
-	v,err := ReadFromStream(file)
-	return v,err
+	v, err := ReadFromStream(file)
+	return v, err
 }

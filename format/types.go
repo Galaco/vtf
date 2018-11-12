@@ -10,13 +10,13 @@ const RGBA8888 = Colour(0)
 const ABGR8888 = Colour(1)
 
 // RGB (3bytes)
-const RGB888 =  Colour(2)
+const RGB888 = Colour(2)
 
 // BGR (3bytes)
-const BGR888 =  Colour(3)
+const BGR888 = Colour(3)
 
 // RGB (2bytes)
-const RGB565 =  Colour(4)
+const RGB565 = Colour(4)
 
 // I8
 const I8 = Colour(5)
@@ -40,10 +40,10 @@ const BGR888_BLUESCREEN = Colour(10)
 const ARGB8888 = Colour(11)
 
 // BGRA (4bytes)
-const BGRA8888 =  Colour(12)
+const BGRA8888 = Colour(12)
 
 // Dxt1
-const Dxt1 =  Colour(13)
+const Dxt1 = Colour(13)
 
 // Dxt3
 const Dxt3 = Colour(14)

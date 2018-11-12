@@ -1,12 +1,12 @@
 package vtf
 
 import (
-	"testing"
 	"os"
+	"testing"
 )
 
 func TestReadFromFile(t *testing.T) {
-	_,err := ReadFromFile("samples/read/test.vtf")
+	_, err := ReadFromFile("samples/read/test.vtf")
 	if err != nil {
 		t.Error(err)
 	}
@@ -18,9 +18,8 @@ func TestReadFromStream(t *testing.T) {
 		t.Error(err)
 	}
 
-	_,err = ReadFromStream(f)
+	_, err = ReadFromStream(f)
 	if err != nil {
 		t.Error(err)
 	}
 }
-

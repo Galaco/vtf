@@ -1,6 +1,5 @@
 package vtf
 
-
 const FlagPointSampling = 0x0001
 const FlagTrilinearSampling = 0x0002
 const FlagClampS = 0x0004
