@@ -5,25 +5,25 @@ import (
 	"math"
 )
 
-// computeMipmapSizes: Compute all mipmap sizes
+// ComputeMipmapSizes computes all mipmap sizes
 func ComputeMipmapSizes(num int, width int, height int) [][2]int {
 	mipmaps := make([][2]int, num)
 
 	for i := num - 1; i >= 0; i-- {
 		mipmaps[i] = [2]int{width, height}
 
-		width = int(math.Ceil(float64(width / 2)))
-		height = int(math.Ceil(float64(height / 2)))
+		width = int(math.Ceil(float64(width) / 2))
+		height = int(math.Ceil(float64(height) / 2))
 	}
 
 	return mipmaps
 }
 
-// computeSizeOfMipmapData: Returns the size in bytes
+// ComputeSizeOfMipmapData returns the size in bytes
 func ComputeSizeOfMipmapData(width int, height int, storedFormat format.Colour) int {
 	// Supported compressed formats must be at least 4x4.
 	// The format pads smaller sizes out to 4
-	if isCompressedFormat(storedFormat) == true {
+	if isCompressedFormat(storedFormat) {
 		if width < 4 {
 			width = 4
 		}
