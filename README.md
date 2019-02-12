@@ -1,5 +1,6 @@
 [![GoDoc](https://godoc.org/github.com/Galaco/vtf?status.svg)](https://godoc.org/github.com/Galaco/vtf)
 [![Go report card](https://goreportcard.com/badge/github.com/galaco/vtf)](https://goreportcard.com/badge/github.com/galaco/vtf)
+[![Build Status](https://travis-ci.com/Galaco/vtf.svg?branch=master)](https://travis-ci.com/Galaco/vtf)
 
 
 # vtf
