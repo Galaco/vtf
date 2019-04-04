@@ -17,6 +17,7 @@ func TestReadFromStream(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+	defer f.Close()
 
 	_, err = ReadFromStream(f)
 	if err != nil {

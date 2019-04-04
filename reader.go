@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"github.com/galaco/vtf/format"
-	"github.com/galaco/vtf/utils"
+	"github.com/galaco/vtf/internal"
 	"io"
 )
 
@@ -103,7 +103,7 @@ func (reader *Reader) parseOtherResourceData(header *Header, buffer []byte) ([]b
 // The largest axis should always be 16 wide/tall. The smallest can be any value,
 // but is padded out to divisible by 4 for Dxt1 compressionn reasons
 func (reader *Reader) readLowResolutionMipmap(header *Header, buffer []byte) ([]uint8, error) {
-	bufferSize := utils.ComputeSizeOfMipmapData(
+	bufferSize := internal.ComputeSizeOfMipmapData(
 		int(header.LowResImageWidth),
 		int(header.LowResImageHeight),
 		format.Dxt1)
@@ -129,7 +129,7 @@ func (reader *Reader) readMipmaps(header *Header, buffer []byte) ([][][][][]byte
 
 	depth := header.Depth
 
-	// This shouldn't ever happen, yet it occassionally seems to
+	// This shouldn't ever happen, yet it occasionally seems to
 	if depth == 0 {
 		depth = 1
 	}
@@ -138,8 +138,8 @@ func (reader *Reader) readMipmaps(header *Header, buffer []byte) ([][][][][]byte
 	numZSlice := uint16(1)
 	bufferOffset := 0
 
-	storedFormat := format.Colour(header.HighResImageFormat)
-	mipmapSizes := utils.ComputeMipmapSizes(int(header.MipmapCount), int(header.Width), int(header.Height))
+	storedFormat := format.Format(header.HighResImageFormat)
+	mipmapSizes := internal.ComputeMipmapSizes(int(header.MipmapCount), int(header.Width), int(header.Height))
 
 	// Iterate mipmap; smallest to largest
 	mipMaps := make([][][][][]byte, header.MipmapCount)
@@ -155,7 +155,7 @@ func (reader *Reader) readMipmaps(header *Header, buffer []byte) ([][][][][]byte
 				// Z Slice by Z Slice; first to last
 				// @TODO wtf is a z slice, and how do we know how many there are
 				for sliceIdx := uint16(0); sliceIdx < numZSlice; sliceIdx++ {
-					bufferSize := utils.ComputeSizeOfMipmapData(
+					bufferSize := internal.ComputeSizeOfMipmapData(
 						mipmapSizes[mipmapIdx][0],
 						mipmapSizes[mipmapIdx][1],
 						storedFormat)

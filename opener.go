@@ -5,8 +5,8 @@ import (
 	"os"
 )
 
-// ReadFromStream: Load vtf from standard
-// io.Reader stream,
+// ReadFromStream loads a vtf from standard
+// io.Reader stream
 func ReadFromStream(stream io.Reader) (*Vtf, error) {
 	reader := &Reader{
 		stream: stream,
@@ -15,7 +15,7 @@ func ReadFromStream(stream io.Reader) (*Vtf, error) {
 	return reader.Read()
 }
 
-// ReadFromFile: ReadFromStream wrapper to load directly from
+// ReadFromFile is a wrapper for ReadFromStream wrapper to load directly from
 // filesystem. Exists for convenience
 func ReadFromFile(filepath string) (*Vtf, error) {
 	file, err := os.Open(filepath)

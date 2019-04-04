@@ -1,85 +1,61 @@
 package format
 
-// Colour: A pixel format that colour data is stored in
-type Colour uint32
+// Format is a pixel format that colour data is stored in
+type Format uint32
 
-// RGBA (4bytes)
-const RGBA8888 = Colour(0)
-
-// ABGR (4bytes)
-const ABGR8888 = Colour(1)
-
-// RGB (3bytes)
-const RGB888 = Colour(2)
-
-// BGR (3bytes)
-const BGR888 = Colour(3)
-
-// RGB (2bytes)
-const RGB565 = Colour(4)
-
-// I8
-const I8 = Colour(5)
-
-// IA88
-const IA88 = Colour(6)
-
-// P8
-const P8 = Colour(7)
-
-// A8
-const A8 = Colour(8)
-
-// RGB (3bytes)
-const RGB888_BLUESCREEN = Colour(9)
-
-// RBGR (3bytes)
-const BGR888_BLUESCREEN = Colour(10)
-
-// ARGB (4bytes)
-const ARGB8888 = Colour(11)
-
-// BGRA (4bytes)
-const BGRA8888 = Colour(12)
-
-// Dxt1
-const Dxt1 = Colour(13)
-
-// Dxt3
-const Dxt3 = Colour(14)
-
-// Dxt5
-const Dxt5 = Colour(15)
-
-// BGRX - X may not be alpha (4bytes)
-const BGRX8888 = Colour(16)
-
-// BGR (2bytes)
-const BGR565 = Colour(17)
-
-// BGRX - X may not be alpha (2bytes)
-const BGRX5551 = Colour(18)
-
-// BGRA (2bytes)
-const BGRA4444 = Colour(19)
-
-// Dxt1 - with alpha
-const Dxt1_OneBitAlpha = Colour(20)
-
-// BGRA opacity either 0% or 100% (2bytes)
-const BGRA5551 = Colour(21)
-
-// UV (2bytes)
-const UV88 = Colour(22)
-
-// UV (4bytes)
-const UVWQ8888 = Colour(23)
-
-// RGBA (8bytes) as floats
-const RGBA16161616F = Colour(24)
-
-// RGBA (8bytes)
-const RGBA16161616 = Colour(25)
-
-// UVLX (8bytes)
-const UVLX8888 = Colour(26)
+const (
+	// RGBA8888 RGBA (4bytes)
+	RGBA8888 = Format(0)
+	// ABGR8888 ABGR (4bytes)
+	ABGR8888 = Format(1)
+	// RGB888 RGB (3bytes)
+	RGB888 = Format(2)
+	// BGR888 BGR (3bytes)
+	BGR888 = Format(3)
+	// RGB565 RGB (2bytes)
+	RGB565 = Format(4)
+	// I8
+	I8 = Format(5)
+	// IA88
+	IA88 = Format(6)
+	// P8
+	P8 = Format(7)
+	// A8
+	A8 = Format(8)
+	// RGB888BLUESCREEN RGB (3bytes)
+	RGB888BLUESCREEN = Format(9)
+	// BGR888BLUESCREEN RBGR (3bytes)
+	BGR888BLUESCREEN = Format(10)
+	// ARGB8888 ARGB (4bytes)
+	ARGB8888 = Format(11)
+	// BGRA8888 BGRA (4bytes)
+	BGRA8888 = Format(12)
+	// Dxt1
+	Dxt1 = Format(13)
+	// Dxt3
+	Dxt3 = Format(14)
+	// Dxt5
+	Dxt5 = Format(15)
+	// BGRX8888 BGRX - X may not be alpha (4bytes)
+	BGRX8888 = Format(16)
+	// BGR565 BGR (2bytes)
+	BGR565 = Format(17)
+	// BGRX5551 BGRX - X may not be alpha (2bytes)
+	BGRX5551 = Format(18)
+	// BGRA4444 BGRA (2bytes)
+	BGRA4444 = Format(19)
+	// Dxt1OneBitAlpha Dxt1 - with alpha
+	Dxt1OneBitAlpha = Format(20)
+	// BGRA5551 BGRA opacity either 0% or 100% (2bytes)
+	BGRA5551 = Format(21)
+	// UV88 UV (2bytes)
+	UV88 = Format(22)
+	// UVWQ8888 UV (4bytes)
+	UVWQ8888 = Format(23)
+	// RGBA16161616F RGBA (8bytes) as floats
+	RGBA16161616F = Format(24)
+	// RGBA16161616 RGBA (8bytes)
+	RGBA16161616 = Format(25)
+	// UVLX8888 UVLX (8bytes)
+	UVLX8888 = Format(26)
+)

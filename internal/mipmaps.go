@@ -1,4 +1,4 @@
-package utils
+package internal
 
 import (
 	"github.com/galaco/vtf/format"
@@ -20,7 +20,7 @@ func ComputeMipmapSizes(num int, width int, height int) [][2]int {
 }
 
 // ComputeSizeOfMipmapData returns the size in bytes
-func ComputeSizeOfMipmapData(width int, height int, storedFormat format.Colour) int {
+func ComputeSizeOfMipmapData(width int, height int, storedFormat format.Format) int {
 	// Supported compressed formats must be at least 4x4.
 	// The format pads smaller sizes out to 4
 	if isCompressedFormat(storedFormat) {
@@ -35,9 +35,9 @@ func ComputeSizeOfMipmapData(width int, height int, storedFormat format.Colour) 
 	return int(bytesPerPixel(storedFormat) * float32(width) * float32(height))
 }
 
-// isCompressedFormat: Whether the provided format
+// isCompressedFormat determines whether the provided format
 // is a compressed format. Supported compressed formats are Dxt* only
-func isCompressedFormat(storedFormat format.Colour) bool {
+func isCompressedFormat(storedFormat format.Format) bool {
 	if storedFormat == format.Dxt1 ||
 		storedFormat == format.Dxt3 ||
 		storedFormat == format.Dxt5 {
@@ -47,9 +47,9 @@ func isCompressedFormat(storedFormat format.Colour) bool {
 	return false
 }
 
-// bytesPerPixel: Get number of bytes required to represent a single pixel
+// bytesPerPixel gets number of bytes required to represent a single pixel
 // May be non-integer for compressed formats
-func bytesPerPixel(storedFormat format.Colour) float32 {
+func bytesPerPixel(storedFormat format.Format) float32 {
 	switch storedFormat {
 	case format.RGBA8888:
 		return 4
@@ -69,9 +69,9 @@ func bytesPerPixel(storedFormat format.Colour) float32 {
 		return 1
 	case format.A8:
 		return 1
-	case format.RGB888_BLUESCREEN:
+	case format.RGB888BLUESCREEN:
 		return 3
-	case format.BGR888_BLUESCREEN:
+	case format.BGR888BLUESCREEN:
 		return 3
 	case format.ARGB8888:
 		return 4
@@ -89,7 +89,7 @@ func bytesPerPixel(storedFormat format.Colour) float32 {
 		return 2
 	case format.BGRA4444:
 		return 2
-	case format.Dxt1_OneBitAlpha:
+	case format.Dxt1OneBitAlpha:
 		return 0.5
 	case format.BGRA5551:
 		return 2

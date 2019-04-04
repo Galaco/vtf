@@ -9,23 +9,23 @@ type Vtf struct {
 	highResolutionImageData [][][][][]byte //[]mipmap[]frame[]face[]slice
 }
 
-// GetHeader: Get vtf Header
-func (vtf *Vtf) GetHeader() Header {
+// Header returns vtf Header
+func (vtf *Vtf) Header() Header {
 	return vtf.header
 }
 
-// GetLowResImageData: Get raw data of low-resolution thumbnail
-func (vtf *Vtf) GetLowResImageData() []uint8 {
+// LowResImageData returns raw data of low-resolution thumbnail
+func (vtf *Vtf) LowResImageData() []uint8 {
 	return vtf.lowResolutionImageData
 }
 
-// GetHighResImageData: Get all data for all mipmaps
-func (vtf *Vtf) GetHighResImageData() [][][][][]byte {
+// HighResImageData returns all data for all mipmaps
+func (vtf *Vtf) HighResImageData() [][][][][]byte {
 	return vtf.highResolutionImageData
 }
 
-// GetMipmapsForFrame: Get all mipmap sizes for a single frame
-func (vtf *Vtf) GetMipmapsForFrame(frame int) [][]byte {
+// MipmapsForFrame returns all mipmap sizes for a single frame
+func (vtf *Vtf) MipmapsForFrame(frame int) [][]byte {
 	ret := make([][]byte, vtf.header.MipmapCount)
 
 	for idx, mipmap := range vtf.highResolutionImageData {
@@ -35,9 +35,9 @@ func (vtf *Vtf) GetMipmapsForFrame(frame int) [][]byte {
 	return ret
 }
 
-// GetHighestResolutionImageForFrame: Get the best possible resolution
+// HighestResolutionImageForFrame returns the best possible resolution
 // for a single frame in the vtf
-func (vtf *Vtf) GetHighestResolutionImageForFrame(frame int) []byte {
+func (vtf *Vtf) HighestResolutionImageForFrame(frame int) []byte {
 	// @TODO This currently only supports single face, single Z Slice images
 	return vtf.highResolutionImageData[vtf.header.MipmapCount-1][frame][0][0]
 }

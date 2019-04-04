@@ -1,6 +1,9 @@
 [![GoDoc](https://godoc.org/github.com/Galaco/vtf?status.svg)](https://godoc.org/github.com/Galaco/vtf)
 [![Go report card](https://goreportcard.com/badge/github.com/galaco/vtf)](https://goreportcard.com/badge/github.com/galaco/vtf)
+[![GolangCI](https://golangci.com/badges/github.com/galaco/vtf.svg)](https://golangci.com)
 [![Build Status](https://travis-ci.com/Galaco/vtf.svg?branch=master)](https://travis-ci.com/Galaco/vtf)
+[![codecov](https://codecov.io/gh/Galaco/vtf/branch/master/graph/badge.svg)](https://codecov.io/gh/Galaco/vtf)
+[![CircleCI](https://circleci.com/gh/Galaco/vtf.svg?style=svg)](https://circleci.com/gh/Galaco/vtf)
 
 
 # vtf
@@ -26,7 +29,7 @@ func main() {
 	if err != nil {
 		log.Println(err)
 	} else {
-    log.Println(texture.GetHeader().Width)
+    log.Println(texture.Header().Width)
   }
 }
 
@@ -43,4 +46,5 @@ func main() {
 * (Probably) support depths or zslices > 1
 
 ### Contributing
-No where near all the possible texture configurations have been tested. It's possible some could cause issues. Any issues (including offending file) are greatly appreciated.
+No where near all the possible texture configurations have been tested. It's possible some could cause issues. Any issues 
+(including offending file) are greatly appreciated.
