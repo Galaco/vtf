@@ -7,7 +7,7 @@
 
 
 # vtf
-Parse Valves own .vtf format (literally Valve Texture Format) for Source Engine texture.
+> 0 dependency parser for Valves own .vtf (Valve Texture Format) Source Engine textures.
 
 ### Features
 * Supports versions 7.1-7.5
