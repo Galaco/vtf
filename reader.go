@@ -9,14 +9,38 @@ import (
 	"io"
 )
 
-const headerSize = 96
+const (
+	headerSize   = 96
+	vtfSignature = "VTF\x00"
+)
 
-// Reader: Vtf Reader
+var (
+	// ErrorVtfSignatureMismatch occurs when a stream does not start with the VTF magic signature
+	ErrorVtfSignatureMismatch = errors.New("header signature does not match: VTF\x00")
+	// ErrorTextureDepthNotSupported occurs when attempting to parse a stream with depth > 1
+	ErrorTextureDepthNotSupported = errors.New("only vtf textures with depth 1 are supported")
+	// ErrorMipmapSizeMismatch occurs when filesize does not match calculated mipmap size
+	ErrorMipmapSizeMismatch = errors.New("expected data size is smaller than actual")
+)
+
+// Reader reads from a vtf stream
 type Reader struct {
 	stream io.Reader
 }
 
-// Read: Reads the vtf image from stream into a usable structure
+// ReadHeader reads the header of a texture only.
+func (reader *Reader) ReadHeader() (*Header, error) {
+	buf := bytes.Buffer{}
+	_, err := buf.ReadFrom(reader.stream)
+	if err != nil {
+		return nil, err
+	}
+
+	// Header
+	return reader.parseHeader(buf.Bytes())
+}
+
+// Read parses vtf image from stream into a usable structure
 // The only error to expect would be if mipmap data size overflows the total file size; normally
 // due to tampered Header data.
 func (reader *Reader) Read() (*Vtf, error) {
@@ -32,7 +56,7 @@ func (reader *Reader) Read() (*Vtf, error) {
 		return nil, err
 	}
 
-	// Tesources - in vtf 7.3+ only
+	// Resources - in vtf 7.3+ only
 	resourceData, err := reader.parseOtherResourceData(header, buf.Bytes())
 	if err != nil {
 		return nil, err
@@ -58,7 +82,7 @@ func (reader *Reader) Read() (*Vtf, error) {
 	}, nil
 }
 
-// parseHeader: Parse vtf Header.
+// parseHeader reads vtf Header.
 func (reader *Reader) parseHeader(buffer []byte) (*Header, error) {
 
 	// We know Header is 96 bytes
@@ -79,14 +103,14 @@ func (reader *Reader) parseHeader(buffer []byte) (*Header, error) {
 	if err != nil {
 		return nil, err
 	}
-	if string(header.Signature[:4]) != "VTF\x00" {
-		return nil, errors.New("Header signature does not match: VTF\x00")
+	if string(header.Signature[:4]) != vtfSignature {
+		return nil, ErrorVtfSignatureMismatch
 	}
 
 	return &header, nil
 }
 
-// parseOtherResourceData: Returns resource data for 7.3+ images
+// parseOtherResourceData reads resource data for 7.3+ images
 func (reader *Reader) parseOtherResourceData(header *Header, buffer []byte) ([]byte, error) {
 	// validate Header version
 	if (header.Version[0]*10+header.Version[1] < 73) || header.NumResource == 0 {
@@ -98,7 +122,7 @@ func (reader *Reader) parseOtherResourceData(header *Header, buffer []byte) ([]b
 	return []byte{}, nil
 }
 
-// readLowResolutionMipmap: Reads the low resolution texture information
+// readLowResolutionMipmap reads the low resolution texture information
 // This is normally what you see previewed in Hammer texture browser.
 // The largest axis should always be 16 wide/tall. The smallest can be any value,
 // but is padded out to divisible by 4 for Dxt1 compressionn reasons
@@ -119,12 +143,12 @@ func (reader *Reader) readLowResolutionMipmap(header *Header, buffer []byte) ([]
 	return imgBuffer, nil
 }
 
-// readMipmaps: Read all mipmaps
+// readMipmaps reads all mipmaps
 // Returned format is a bit odd, but is just a set of flat arrays containing arrays:
 // mipmap[frame[face[slice[RGBA]]]
 func (reader *Reader) readMipmaps(header *Header, buffer []byte) ([][][][][]byte, error) {
 	if header.Depth > 1 {
-		return [][][][][]byte{}, errors.New("only vtf textures with depth 1 are supported")
+		return [][][][][]byte{}, ErrorTextureDepthNotSupported
 	}
 
 	depth := header.Depth
@@ -160,7 +184,7 @@ func (reader *Reader) readMipmaps(header *Header, buffer []byte) ([][][][][]byte
 						mipmapSizes[mipmapIdx][1],
 						storedFormat)
 					if len(buffer) < bufferOffset+bufferSize {
-						return mipMaps, errors.New("expected data size is smaller than actual")
+						return mipMaps, ErrorMipmapSizeMismatch
 					}
 					img := buffer[bufferOffset : bufferOffset+bufferSize]
 
