@@ -10,7 +10,6 @@ import (
 )
 
 const (
-	headerSize   = 96
 	vtfSignature = "VTF\x00"
 )
 
@@ -69,7 +68,7 @@ func (reader *Reader) Read() (*Vtf, error) {
 	}
 
 	// Mipmaps
-	highResImage, err := reader.readMipmaps(header, buf.Bytes()[header.HeaderSize+uint32(len(lowResImage)):])
+	highResImage, err := reader.readMipmaps(header, buf.Bytes())
 	if err != nil {
 		return nil, err
 	}
@@ -84,10 +83,9 @@ func (reader *Reader) Read() (*Vtf, error) {
 
 // parseHeader reads vtf Header.
 func (reader *Reader) parseHeader(buffer []byte) (*Header, error) {
-
-	// We know Header is 96 bytes
+	// We know Header is 96 bytes maximum
 	// Note it *may* not be someday...
-	headerBytes := make([]byte, headerSize)
+	headerBytes := make([]byte, 96)
 
 	// Read bytes equal to Header size
 	byteReader := bytes.NewReader(buffer)
@@ -133,7 +131,7 @@ func (reader *Reader) readLowResolutionMipmap(header *Header, buffer []byte) ([]
 		format.Dxt1)
 
 	imgBuffer := make([]byte, bufferSize)
-	byteReader := bytes.NewReader(buffer[headerSize : headerSize+bufferSize])
+	byteReader := bytes.NewReader(buffer[int(header.HeaderSize) : int(header.HeaderSize)+bufferSize])
 	sectionReader := io.NewSectionReader(byteReader, 0, int64(bufferSize))
 	_, err := sectionReader.Read(imgBuffer)
 	if err != nil {
@@ -146,36 +144,36 @@ func (reader *Reader) readLowResolutionMipmap(header *Header, buffer []byte) ([]
 // readMipmaps reads all mipmaps
 // Returned format is a bit odd, but is just a set of flat arrays containing arrays:
 // mipmap[frame[face[slice[RGBA]]]
-func (reader *Reader) readMipmaps(header *Header, buffer []byte) ([][][][][]byte, error) {
+func (reader *Reader) readMipmaps(header *Header, buffer []byte) ([][][][][]uint8, error) {
 	if header.Depth > 1 {
-		return [][][][][]byte{}, ErrorTextureDepthNotSupported
+		return [][][][][]uint8{}, ErrorTextureDepthNotSupported
 	}
 
 	depth := header.Depth
 
-	// This shouldn't ever happen, yet it occasionally seems to
+	// Occurs in texture versions before 7.2
 	if depth == 0 {
 		depth = 1
 	}
 
 	// Only support 1 ZSlice. No known Source game can use > 1 zslices
 	numZSlice := uint16(1)
-	bufferOffset := 0
+	bufferEnd := len(buffer)
 
 	storedFormat := format.Format(header.HighResImageFormat)
 	mipmapSizes := internal.ComputeMipmapSizes(int(header.MipmapCount), int(header.Width), int(header.Height))
 
 	// Iterate mipmap; smallest to largest
-	mipMaps := make([][][][][]byte, header.MipmapCount)
-	for mipmapIdx := uint8(0); mipmapIdx < header.MipmapCount; mipmapIdx++ {
+	mipMaps := make([][][][][]uint8, header.MipmapCount)
+	for mipmapIdx := int8(header.MipmapCount - 1); mipmapIdx >= int8(0); mipmapIdx-- {
 		// Frame by frame; first to last
-		frames := make([][][][]byte, header.Frames)
+		frames := make([][][][]uint8, header.Frames)
 		for frameIdx := uint16(0); frameIdx < header.Frames; frameIdx++ {
-			faces := make([][][]byte, 1)
+			faces := make([][][]uint8, 1)
 			// Face by face; first to last
 			// @TODO is this correct to use depth? How to know how many faces there are
 			for faceIdx := uint16(0); faceIdx < depth; faceIdx++ {
-				zSlices := make([][]byte, 1)
+				zSlices := make([][]uint8, 1)
 				// Z Slice by Z Slice; first to last
 				// @TODO wtf is a z slice, and how do we know how many there are
 				for sliceIdx := uint16(0); sliceIdx < numZSlice; sliceIdx++ {
@@ -183,12 +181,12 @@ func (reader *Reader) readMipmaps(header *Header, buffer []byte) ([][][][][]byte
 						mipmapSizes[mipmapIdx][0],
 						mipmapSizes[mipmapIdx][1],
 						storedFormat)
-					if len(buffer) < bufferOffset+bufferSize {
+					if len(buffer) < bufferEnd-bufferSize {
 						return mipMaps, ErrorMipmapSizeMismatch
 					}
-					img := buffer[bufferOffset : bufferOffset+bufferSize]
+					img := buffer[bufferEnd-bufferSize : bufferEnd]
 
-					bufferOffset += bufferSize
+					bufferEnd -= bufferSize
 					zSlices[sliceIdx] = img
 				}
 				faces[faceIdx] = zSlices

@@ -6,7 +6,7 @@ type Vtf struct {
 	header                  Header
 	resources               []byte
 	lowResolutionImageData  []uint8
-	highResolutionImageData [][][][][]byte //[]mipmap[]frame[]face[]slice
+	highResolutionImageData [][][][][]uint8 //[]mipmap[]frame[]face[]slice
 }
 
 // Header returns vtf Header
@@ -20,13 +20,18 @@ func (vtf *Vtf) LowResImageData() []uint8 {
 }
 
 // HighResImageData returns all data for all mipmaps
-func (vtf *Vtf) HighResImageData() [][][][][]byte {
+func (vtf *Vtf) HighResImageData() [][][][][]uint8 {
 	return vtf.highResolutionImageData
 }
 
+// Image returns raw data of the first frame of the highest resolution mipmap
+func (vtf *Vtf) Image() []uint8 {
+	return vtf.HighestResolutionImageForFrame(0)
+}
+
 // MipmapsForFrame returns all mipmap sizes for a single frame
-func (vtf *Vtf) MipmapsForFrame(frame int) [][]byte {
-	ret := make([][]byte, vtf.header.MipmapCount)
+func (vtf *Vtf) MipmapsForFrame(frame int) [][]uint8 {
+	ret := make([][]uint8, vtf.header.MipmapCount)
 
 	for idx, mipmap := range vtf.highResolutionImageData {
 		ret[idx] = mipmap[frame][0][0]
