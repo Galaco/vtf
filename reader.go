@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"io"
+
 	"github.com/galaco/vtf/format"
 	"github.com/galaco/vtf/internal"
-	"io"
 )
 
 const (
@@ -20,6 +22,14 @@ var (
 	ErrorTextureDepthNotSupported = errors.New("only vtf textures with depth 1 are supported")
 	// ErrorMipmapSizeMismatch occurs when filesize does not match calculated mipmap size
 	ErrorMipmapSizeMismatch = errors.New("expected data size is smaller than actual")
+	// ErrorInvalidDimensions occurs when texture dimensions are invalid
+	ErrorInvalidDimensions = errors.New("invalid texture dimensions")
+	// ErrorInvalidMipmapCount occurs when mipmap count is unreasonable
+	ErrorInvalidMipmapCount = errors.New("invalid mipmap count")
+	// ErrorInvalidHeaderSize occurs when header size is invalid
+	ErrorInvalidHeaderSize = errors.New("invalid header size")
+	// ErrorUnsupportedVersion occurs when VTF version is not supported
+	ErrorUnsupportedVersion = errors.New("unsupported VTF version")
 )
 
 // Reader reads from a vtf stream
@@ -29,46 +39,49 @@ type Reader struct {
 
 // ReadHeader reads the header of a texture only.
 func (reader *Reader) ReadHeader() (*Header, error) {
-	buf := bytes.Buffer{}
-	_, err := buf.ReadFrom(reader.stream)
+	data, err := io.ReadAll(reader.stream)
 	if err != nil {
 		return nil, err
 	}
 
 	// Header
-	return reader.parseHeader(buf.Bytes())
+	return reader.parseHeader(data)
 }
 
 // Read parses vtf image from stream into a usable structure
 // The only error to expect would be if mipmap data size overflows the total file size; normally
 // due to tampered Header data.
 func (reader *Reader) Read() (*Vtf, error) {
-	buf := bytes.Buffer{}
-	_, err := buf.ReadFrom(reader.stream)
+	data, err := io.ReadAll(reader.stream)
 	if err != nil {
 		return nil, err
 	}
 
 	// Header
-	header, err := reader.parseHeader(buf.Bytes())
+	header, err := reader.parseHeader(data)
 	if err != nil {
 		return nil, err
 	}
 
+	// Validate header to prevent DoS attacks via malicious files
+	if err := reader.validateHeader(header, len(data)); err != nil {
+		return nil, err
+	}
+
 	// Resources - in vtf 7.3+ only
-	resourceData, err := reader.parseOtherResourceData(header, buf.Bytes())
+	resourceData, err := reader.parseOtherResourceData(header, data)
 	if err != nil {
 		return nil, err
 	}
 
 	// Low resolution preview texture
-	lowResImage, err := reader.readLowResolutionMipmap(header, buf.Bytes())
+	lowResImage, err := reader.readLowResolutionMipmap(header, data)
 	if err != nil {
 		return nil, err
 	}
 
 	// Mipmaps
-	highResImage, err := reader.readMipmaps(header, buf.Bytes())
+	highResImage, err := reader.readMipmaps(header, data)
 	if err != nil {
 		return nil, err
 	}
@@ -106,6 +119,68 @@ func (reader *Reader) parseHeader(buffer []byte) (*Header, error) {
 	}
 
 	return &header, nil
+}
+
+// validateHeader performs security validation on header fields to prevent DoS attacks
+func (reader *Reader) validateHeader(header *Header, fileSize int) error {
+	// Validate version - only support 7.1 to 7.5
+	majorVersion := header.Version[0]
+	minorVersion := header.Version[1]
+	version := majorVersion*10 + minorVersion
+	if majorVersion != 7 || version < 70 || version > 75 {
+		return fmt.Errorf("%w: %d.%d (only 7.0-7.5 supported)", ErrorUnsupportedVersion, majorVersion, minorVersion)
+	}
+
+	// Validate dimensions
+	if header.Width == 0 || header.Height == 0 {
+		return fmt.Errorf("%w: width=%d, height=%d (cannot be zero)", ErrorInvalidDimensions, header.Width, header.Height)
+	}
+
+	// Prevent excessive memory allocation - Source Engine typically uses max 4096x4096
+	const maxDimension = 16384 // Allow some headroom beyond typical max
+	if header.Width > maxDimension || header.Height > maxDimension {
+		return fmt.Errorf("%w: width=%d, height=%d (max %d)", ErrorInvalidDimensions, header.Width, header.Height, maxDimension)
+	}
+
+	// Validate mipmap count - should not exceed log2(max(width, height)) + 1
+	maxDim := header.Width
+	if header.Height > maxDim {
+		maxDim = header.Height
+	}
+	var maxMipmaps uint8 = 0
+	for d := maxDim; d > 0; d >>= 1 {
+		maxMipmaps++
+	}
+	if header.MipmapCount == 0 || header.MipmapCount > maxMipmaps {
+		return fmt.Errorf("%w: count=%d, expected 1-%d for %dx%d texture", ErrorInvalidMipmapCount, header.MipmapCount, maxMipmaps, header.Width, header.Height)
+	}
+
+	// Validate header size
+	if header.HeaderSize < 64 || header.HeaderSize > 1024 {
+		return fmt.Errorf("%w: %d bytes (expected 64-1024)", ErrorInvalidHeaderSize, header.HeaderSize)
+	}
+
+	// Validate header size doesn't exceed file size
+	if int(header.HeaderSize) > fileSize {
+		return fmt.Errorf("%w: header size %d exceeds file size %d", ErrorInvalidHeaderSize, header.HeaderSize, fileSize)
+	}
+
+	// Validate frame count is reasonable
+	if header.Frames == 0 || header.Frames > 1024 {
+		return fmt.Errorf("%w: frame count %d is invalid (expected 1-1024)", ErrorInvalidDimensions, header.Frames)
+	}
+
+	// Validate depth (if present in v7.2+)
+	if version >= 72 && header.Depth > 1 {
+		return ErrorTextureDepthNotSupported
+	}
+
+	// Validate low-res dimensions
+	if header.LowResImageWidth > 16 || header.LowResImageHeight > 16 {
+		return fmt.Errorf("%w: low-res dimensions %dx%d exceed expected maximum 16x16", ErrorInvalidDimensions, header.LowResImageWidth, header.LowResImageHeight)
+	}
+
+	return nil
 }
 
 // parseOtherResourceData reads resource data for 7.3+ images
