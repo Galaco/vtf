@@ -222,11 +222,37 @@ func TestVtf_ValidationErrors(t *testing.T) {
 			expectedError: ErrorInvalidDimensions,
 		},
 		{
-			name: "depth",
+			name: "excessive depth",
 			modifyHeader: func(h *Header) {
-				h.Depth = 2
+				h.Depth = 20000
 			},
-			expectedError: ErrorTextureDepthNotSupported,
+			expectedError: ErrorInvalidDimensions,
+		},
+		{
+			name: "excessive mipmap count for depth",
+			modifyHeader: func(h *Header) {
+				h.Width, h.Height, h.Depth = 4, 4, 16
+				h.MipmapCount = 6
+			},
+			expectedError: ErrorInvalidMipmapCount,
+		},
+		{
+			name: "excessive resource count",
+			modifyHeader: func(h *Header) {
+				h.Version[1] = 3
+				h.NumResource = 33
+				h.HeaderSize = 1000
+			},
+			expectedError: ErrorInvalidResource,
+		},
+		{
+			name: "resources exceed header size",
+			modifyHeader: func(h *Header) {
+				h.Version[1] = 3
+				h.NumResource = 3
+				h.HeaderSize = 96
+			},
+			expectedError: ErrorInvalidHeaderSize,
 		},
 	}
 

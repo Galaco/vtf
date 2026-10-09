@@ -25,6 +25,20 @@ type testTexture struct {
 	lowResWidth   uint8
 	lowResHeight  uint8
 	trailing      []byte
+
+	// resources are encoded for 7.3+, in the order given. Entries tagged ResourceTagLowResImage
+	// or ResourceTagImage are placeholders for the encoded images. Defaults to just the images.
+	resources []testResource
+	// reverseDirectory writes the resource directory in the opposite order to the data
+	reverseDirectory bool
+}
+
+// testResource is a resource to encode in a 7.3+ testTexture
+type testResource struct {
+	tag   ResourceTag
+	flags uint8
+	// data is the data chunk contents, or the 4 byte value when flags has ResourceFlagNoDataChunk
+	data []byte
 }
 
 // storedImage is a single mipmap/frame/face/slice image within an encoded testTexture.
@@ -58,6 +72,9 @@ func (tt testTexture) header() Header {
 	copy(h.Signature[:], vtfSignature)
 	h.Version = [2]uint32{7, tt.minorVersion}
 	h.HeaderSize = tt.headerSize()
+	if tt.minorVersion >= 3 {
+		h.NumResource = uint32(len(tt.resourceList()))
+	}
 	h.Width = tt.width
 	h.Height = tt.height
 	h.Flags = tt.flags
@@ -77,10 +94,20 @@ func (tt testTexture) header() Header {
 }
 
 func (tt testTexture) headerSize() uint32 {
-	if tt.minorVersion < 2 {
+	switch {
+	case tt.minorVersion < 2:
 		return 64
+	case tt.minorVersion < 3:
+		return 80
 	}
-	return 80
+	return 80 + 8*uint32(len(tt.resourceList()))
+}
+
+func (tt testTexture) resourceList() []testResource {
+	if tt.resources == nil {
+		return []testResource{{tag: ResourceTagLowResImage}, {tag: ResourceTagImage}}
+	}
+	return tt.resources
 }
 
 // build encodes the texture, returning the file and the images in the order they are stored.
@@ -90,12 +117,56 @@ func (tt testTexture) build(t testing.TB) ([]byte, []storedImage) {
 	h := tt.header()
 	encoded := make([]byte, h.HeaderSize)
 	copy(encoded, encodeHeader(t, h))
+	lowRes := tt.encodeLowRes(t)
+	image, images := tt.encodeImage(t)
 
-	if tt.lowResFormat != format.None && tt.lowResWidth > 0 && tt.lowResHeight > 0 {
-		lowRes := testImageSize(t, int(tt.lowResWidth), int(tt.lowResHeight), tt.lowResFormat)
-		encoded = append(encoded, bytes.Repeat([]byte{testLowResFill}, lowRes)...)
+	// Before 7.3 the thumbnail follows the header, and image data follows the thumbnail
+	if tt.minorVersion < 3 {
+		encoded = append(append(encoded, lowRes...), image...)
+		return append(encoded, tt.trailing...), images
 	}
 
+	var directory []byte
+	for _, resource := range tt.resourceList() {
+		entry := make([]byte, 8)
+		copy(entry, resource.tag)
+		entry[3] = resource.flags
+		offset := uint32(len(encoded))
+		switch {
+		case resource.flags&ResourceFlagNoDataChunk != 0:
+			copy(entry[4:], resource.data)
+		case resource.tag == ResourceTagLowResImage:
+			encoded = append(encoded, lowRes...)
+		case resource.tag == ResourceTagImage:
+			encoded = append(encoded, image...)
+		default:
+			encoded = binary.LittleEndian.AppendUint32(encoded, uint32(len(resource.data)))
+			encoded = append(encoded, resource.data...)
+		}
+		if resource.flags&ResourceFlagNoDataChunk == 0 {
+			binary.LittleEndian.PutUint32(entry[4:], offset)
+		}
+		if tt.reverseDirectory {
+			directory = append(entry, directory...)
+		} else {
+			directory = append(directory, entry...)
+		}
+	}
+	copy(encoded[resourceDirectoryOffset:], directory)
+
+	return append(encoded, tt.trailing...), images
+}
+
+func (tt testTexture) encodeLowRes(t testing.TB) []byte {
+	if tt.lowResFormat == format.None || tt.lowResWidth == 0 || tt.lowResHeight == 0 {
+		return nil
+	}
+	size := testImageSize(t, int(tt.lowResWidth), int(tt.lowResHeight), tt.lowResFormat)
+	return bytes.Repeat([]byte{testLowResFill}, size)
+}
+
+func (tt testTexture) encodeImage(t testing.TB) ([]byte, []storedImage) {
+	var encoded []byte
 	var images []storedImage
 	fill := byte(0)
 	for level := int(tt.mipmaps) - 1; level >= 0; level-- {
@@ -114,7 +185,7 @@ func (tt testTexture) build(t testing.TB) ([]byte, []storedImage) {
 		}
 	}
 
-	return append(encoded, tt.trailing...), images
+	return encoded, images
 }
 
 func binaryWrite(w io.Writer, h *Header) error {

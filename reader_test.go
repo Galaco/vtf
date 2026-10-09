@@ -191,6 +191,19 @@ func FuzzReadFromStream(f *testing.F) {
 		data, _ := tt.build(f)
 		f.Add(data)
 	}
+	cubemap := newTestTexture()
+	cubemap.minorVersion = 4
+	cubemap.flags = FlagEnvironmentMap
+	cubemap.faces = 7
+	cubemap.depth = 2
+	cubemap.resources = []testResource{
+		{tag: ResourceTagCRC, flags: ResourceFlagNoDataChunk, data: []byte{1, 2, 3, 4}},
+		{tag: ResourceTagLowResImage},
+		{tag: ResourceTagImage},
+		{tag: ResourceTagKeyValues, data: []byte("key values")},
+	}
+	data, _ := cubemap.build(f)
+	f.Add(data)
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		v, err := ReadFromStream(bytes.NewReader(data))
