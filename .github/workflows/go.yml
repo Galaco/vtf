@@ -12,13 +12,14 @@ jobs:
       matrix:
         go: ['1.21.x', 'stable']
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go }}
       - run: go vet ./...
       - run: go test -race -cover ./...
       - name: Fuzz
+        if: matrix.go == 'stable'
         run: |
           go test -run '^$' -fuzz FuzzReadFromStream -fuzztime 30s .
           go test -run '^$' -fuzz FuzzConvert -fuzztime 15s ./vtfimage
@@ -26,8 +27,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: stable
       - uses: dominikh/staticcheck-action@v1
