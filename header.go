@@ -1,9 +1,11 @@
 package vtf
 
+import "github.com/galaco/vtf/v2/format"
+
 // Header for VTF Header format
 // Contents includes information for all versions
 // Its up to the implementee to decide what properties they need
-// based on the version
+// based on the version. Fields a version does not store are zero.
 type Header struct {
 	HeaderCommon
 	Header72
@@ -16,14 +18,14 @@ type HeaderCommon struct {
 	Signature [4]byte
 	// Version - Version[0].version[1] e.g. 7.2 uint
 	Version [2]uint32
-	// HeaderSize is size of Header (16 byte aligned, currently 80bytes) uint
+	// HeaderSize is size of Header (16 byte aligned), including the resource directory in v7.3+
 	HeaderSize uint32
 	// Width of largest mipmap (^2) ushort
 	Width uint16
 	// Height of largest mipmap (^2) ushort
 	Height uint16
 	// Flags are VTF Flags uint
-	Flags uint32
+	Flags Flags
 	// Frames in number of frames (if animated) default: 1 ushort
 	Frames uint16
 	// FirstFrame is first frame in animation (0 based) ushort
@@ -34,12 +36,12 @@ type HeaderCommon struct {
 	_            [4]byte
 	// BumpmapScale is bumpmap scale float
 	BumpmapScale float32
-	// HighResImageFormat is high resolution image format uint (probably 4?)
-	HighResImageFormat uint32
+	// HighResImageFormat is the format of the high resolution image data
+	HighResImageFormat format.Format
 	// MipmapCount is number of mipmaps uchar
 	MipmapCount uint8
-	// LowResImageFormat is low resolution image format (always DXT1 [=14]) uint
-	LowResImageFormat uint32
+	// LowResImageFormat is the format of the low resolution thumbnail (usually DXT1, or None if there is no thumbnail)
+	LowResImageFormat format.Format
 	// LowResImageWidth is low resolution image width uchar
 	LowResImageWidth uint8
 	// LowResImageHeight is low resolution image height uchar
@@ -48,7 +50,7 @@ type HeaderCommon struct {
 
 // Header72 is v7.2+ includes these properties
 type Header72 struct {
-	// Depth of the largest mipmap in pixels (^2) ushort
+	// Depth of the largest mipmap in pixels (^2) ushort. 1 for 2D textures
 	Depth uint16
 }
 

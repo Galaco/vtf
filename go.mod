@@ -1,3 +1,3 @@
-module github.com/galaco/vtf
+module github.com/galaco/vtf/v2
 
-go 1.19
+go 1.21

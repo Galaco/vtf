@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/galaco/vtf/format"
+	"github.com/galaco/vtf/v2/format"
 )
 
 func TestMipmapDimensions(t *testing.T) {

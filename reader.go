@@ -8,8 +8,8 @@ import (
 	"io"
 	"sort"
 
-	"github.com/galaco/vtf/format"
-	"github.com/galaco/vtf/internal"
+	"github.com/galaco/vtf/v2/format"
+	"github.com/galaco/vtf/v2/internal"
 )
 
 const (
@@ -43,24 +43,6 @@ var (
 	ErrUnsupportedFormat = internal.ErrUnsupportedFormat
 	// ErrInvalidResource occurs when the resource directory of a v7.3+ texture is invalid
 	ErrInvalidResource = errors.New("vtf: invalid resource")
-)
-
-// Deprecated error names, kept for compatibility.
-var (
-	// Deprecated: use ErrSignatureMismatch.
-	ErrorVtfSignatureMismatch = ErrSignatureMismatch
-	// Deprecated: volume textures are supported, so this error is no longer returned.
-	ErrorTextureDepthNotSupported = errors.New("vtf: only vtf textures with depth 1 are supported")
-	// Deprecated: use ErrMipmapSizeMismatch.
-	ErrorMipmapSizeMismatch = ErrMipmapSizeMismatch
-	// Deprecated: use ErrInvalidDimensions.
-	ErrorInvalidDimensions = ErrInvalidDimensions
-	// Deprecated: use ErrInvalidMipmapCount.
-	ErrorInvalidMipmapCount = ErrInvalidMipmapCount
-	// Deprecated: use ErrInvalidHeaderSize.
-	ErrorInvalidHeaderSize = ErrInvalidHeaderSize
-	// Deprecated: use ErrUnsupportedVersion.
-	ErrorUnsupportedVersion = ErrUnsupportedVersion
 )
 
 // Reader reads a texture from a stream. It reads only the bytes the texture
@@ -120,16 +102,16 @@ func (reader *Reader) read() (*Vtf, error) {
 
 	// Before 7.3 the thumbnail follows the header, and image data follows the thumbnail
 	if len(reader.entries) == 0 {
-		if v.lowResolutionImageData, err = reader.readLowResolutionMipmap(header); err != nil {
+		if v.lowRes, err = reader.readLowResolutionMipmap(header); err != nil {
 			return nil, err
 		}
-		if v.highResolutionImageData, err = reader.readMipmaps(header, -1); err != nil {
+		if v.images, err = reader.readMipmaps(header, -1); err != nil {
 			return nil, err
 		}
 		return v, nil
 	}
 
-	if v.resources, v.lowResolutionImageData, v.highResolutionImageData, err = reader.readResources(header); err != nil {
+	if v.resources, v.lowRes, v.images, err = reader.readResources(header); err != nil {
 		return nil, err
 	}
 
@@ -365,7 +347,7 @@ func (reader *Reader) readLowResolutionMipmap(header *Header) ([]uint8, error) {
 // lowResImageSize returns the size of the low resolution image, which is 0 if there is none
 func lowResImageSize(header *Header) (int, error) {
 	// Textures may be stored without a thumbnail
-	lowResFormat := format.Format(header.LowResImageFormat)
+	lowResFormat := header.LowResImageFormat
 	if lowResFormat == format.None || header.LowResImageWidth == 0 || header.LowResImageHeight == 0 {
 		return 0, nil
 	}
@@ -382,16 +364,14 @@ func lowResImageSize(header *Header) (int, error) {
 }
 
 // readMipmaps reads all mipmaps. limit is the most bytes the image may occupy, or -1 if unknown.
-// Returned format is a bit odd, but is just a set of flat arrays containing arrays:
-// mipmap[frame[face[slice[RGBA]]]
-// Mipmaps are indexed smallest first, as they are stored on disk.
+// Images are indexed [mipmap][frame][face][slice], with mipmap 0 the largest.
 func (reader *Reader) readMipmaps(header *Header, limit int64) ([][][][][]uint8, error) {
 	buffer, numFaces, err := reader.readImageData(header, limit)
 	if err != nil {
 		return nil, fmt.Errorf("high resolution image: %w", err)
 	}
 
-	storedFormat := format.Format(header.HighResImageFormat)
+	storedFormat := header.HighResImageFormat
 	numMipmaps := int(header.MipmapCount)
 	numFrames := int(header.Frames)
 
@@ -414,8 +394,7 @@ func (reader *Reader) readMipmaps(header *Header, limit int64) ([][][][][]uint8,
 			}
 			frames[frameIdx] = faces
 		}
-		// Level 0 is the largest mipmap, but mipmaps are indexed smallest first
-		mipMaps[numMipmaps-1-level] = frames
+		mipMaps[level] = frames
 	}
 
 	return mipMaps, nil
@@ -483,7 +462,7 @@ func textureDepth(header *Header) int {
 
 // imageDataSize returns the size of the high resolution image data for every mipmap, frame, face and slice
 func imageDataSize(header *Header, numFaces int) (int64, error) {
-	storedFormat := format.Format(header.HighResImageFormat)
+	storedFormat := header.HighResImageFormat
 
 	total := int64(0)
 	for level := 0; level < int(header.MipmapCount); level++ {

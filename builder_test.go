@@ -6,7 +6,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/galaco/vtf/format"
+	"github.com/galaco/vtf/v2/format"
 )
 
 // testTexture describes a synthetic vtf to encode in tests. Every stored image is
@@ -19,7 +19,7 @@ type testTexture struct {
 	mipmaps       uint8
 	frames        uint16
 	firstFrame    uint16
-	flags         uint32
+	flags         Flags
 	faces         int // faces to encode
 	lowResFormat  format.Format
 	lowResWidth   uint8
@@ -82,9 +82,9 @@ func (tt testTexture) header() Header {
 	h.FirstFrame = tt.firstFrame
 	h.Reflectivity = [3]float32{0.25, 0.5, 0.75}
 	h.BumpmapScale = 1
-	h.HighResImageFormat = uint32(tt.format)
+	h.HighResImageFormat = tt.format
 	h.MipmapCount = tt.mipmaps
-	h.LowResImageFormat = uint32(tt.lowResFormat)
+	h.LowResImageFormat = tt.lowResFormat
 	h.LowResImageWidth = tt.lowResWidth
 	h.LowResImageHeight = tt.lowResHeight
 	if tt.minorVersion >= 2 {
@@ -228,37 +228,23 @@ func testImageSize(t testing.TB, width, height int, f format.Format) int {
 func assertImages(t *testing.T, v *Vtf, images []storedImage) {
 	t.Helper()
 
-	mipmaps := v.HighResImageData()
 	count := 0
-	for _, frames := range mipmaps {
-		for _, faces := range frames {
-			for _, slices := range faces {
-				count += len(slices)
-			}
-		}
+	for level := 0; level < v.MipmapCount(); level++ {
+		_, _, depth := v.MipmapDimensions(level)
+		count += v.FrameCount() * v.FaceCount() * depth
 	}
 	if count != len(images) {
 		t.Errorf("decoded %d images, want %d", count, len(images))
 	}
 
 	for _, img := range images {
-		// Mipmaps are indexed smallest first
-		idx := len(mipmaps) - 1 - img.level
-		if idx < 0 || img.frame >= len(mipmaps[idx]) || img.face >= len(mipmaps[idx][img.frame]) ||
-			img.slice >= len(mipmaps[idx][img.frame][img.face]) {
-			t.Fatalf("missing image for mipmap %d frame %d face %d slice %d", img.level, img.frame, img.face, img.slice)
+		got, err := v.Mipmap(img.level, img.frame, img.face, img.slice)
+		if err != nil {
+			t.Fatalf("mipmap %d frame %d face %d slice %d: %v", img.level, img.frame, img.face, img.slice, err)
 		}
-		got := mipmaps[idx][img.frame][img.face][img.slice]
 		if want := bytes.Repeat([]byte{img.fill}, img.size); !bytes.Equal(got, want) {
 			t.Errorf("mipmap %d frame %d face %d slice %d: got %d bytes starting %v, want %d bytes of %d",
 				img.level, img.frame, img.face, img.slice, len(got), got[:min(len(got), 4)], img.size, img.fill)
 		}
 	}
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

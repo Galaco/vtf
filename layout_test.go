@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/galaco/vtf/format"
+	"github.com/galaco/vtf/v2/format"
 )
 
 func TestRead_Cubemap(t *testing.T) {
@@ -38,7 +38,7 @@ func TestRead_Cubemap(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if faces := len(v.HighResImageData()[0][0]); faces != tc.storedFaces {
+			if faces := v.FaceCount(); faces != tc.storedFaces {
 				t.Errorf("got %d faces, want %d", faces, tc.storedFaces)
 			}
 			assertImages(t, v, images)
@@ -71,9 +71,8 @@ func TestRead_VolumeTexture(t *testing.T) {
 	assertImages(t, v, images)
 
 	// Each mipmap halves depth too: 4, 2, 1, 1, 1 slices from largest to smallest
-	mipmaps := v.HighResImageData()
 	for level, want := range []int{4, 2, 1, 1, 1} {
-		if got := len(mipmaps[len(mipmaps)-1-level][0][0]); got != want {
+		if _, _, got := v.MipmapDimensions(level); got != want {
 			t.Errorf("mipmap %d: got %d slices, want %d", level, got, want)
 		}
 	}

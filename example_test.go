@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/galaco/vtf"
+	"github.com/galaco/vtf/v2"
 )
 
 func ExampleReadFromFile() {
@@ -34,7 +34,7 @@ func ExampleNewReader() {
 	}
 	fmt.Printf("v%d.%d %dx%d\n", header.Version[0], header.Version[1], header.Width, header.Height)
 
-	if header.Flags&vtf.FlagEnvironmentMap == 0 {
+	if !header.Flags.Has(vtf.FlagEnvironmentMap) {
 		texture, err := reader.Read()
 		if err != nil {
 			log.Fatal(err)
@@ -44,4 +44,21 @@ func ExampleNewReader() {
 	// Output:
 	// v7.2 512x128
 	// 196608 bytes
+}
+
+func ExampleVtf_Mipmap() {
+	texture, err := vtf.ReadFromFile("testdata/test.vtf")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for level := 0; level < texture.MipmapCount(); level++ {
+		data, err := texture.Mipmap(level, 0, 0, 0)
+		if err != nil {
+			log.Fatal(err)
+		}
+		width, height, _ := texture.MipmapDimensions(level)
+		fmt.Printf("mipmap %d: %dx%d %s, %d bytes\n", level, width, height, texture.Header().HighResImageFormat, len(data))
+	}
+	// Output: mipmap 0: 512x128 BGR888, 196608 bytes
 }

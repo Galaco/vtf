@@ -3,7 +3,7 @@ package internal
 import (
 	"errors"
 
-	"github.com/galaco/vtf/format"
+	"github.com/galaco/vtf/v2/format"
 )
 
 // ErrUnsupportedFormat is returned when the size of a format's data cannot be computed

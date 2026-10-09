@@ -8,7 +8,7 @@ import (
 	"testing"
 	"testing/iotest"
 
-	"github.com/galaco/vtf/format"
+	"github.com/galaco/vtf/v2/format"
 )
 
 // countingReader counts the bytes read from it
@@ -105,6 +105,18 @@ func TestReader_InvalidHeader(t *testing.T) {
 	}
 }
 
+func TestReader_ReadHeaderAfterFailedRead(t *testing.T) {
+	data, _ := resourceTexture().build(t)
+
+	reader := NewReader(bytes.NewReader(data[:len(data)-1]))
+	if _, err := reader.Read(); !errors.Is(err, ErrMipmapSizeMismatch) {
+		t.Fatalf("expected %v, got %v", ErrMipmapSizeMismatch, err)
+	}
+	if header, err := reader.ReadHeader(); err != nil || header.Width != 16 {
+		t.Errorf("ReadHeader after failed Read: got %v, %v", header, err)
+	}
+}
+
 func TestReader_ConsecutiveTextures(t *testing.T) {
 	raw, _ := loadSample(t)
 	resources, resourceImages := resourceTexture().build(t)
@@ -194,25 +206,9 @@ func TestReader_ClaimedSizeIsNotPreallocated(t *testing.T) {
 	}
 }
 
-func TestErrorAliases(t *testing.T) {
-	aliases := map[error]error{
-		ErrorVtfSignatureMismatch: ErrSignatureMismatch,
-		ErrorMipmapSizeMismatch:   ErrMipmapSizeMismatch,
-		ErrorInvalidDimensions:    ErrInvalidDimensions,
-		ErrorInvalidMipmapCount:   ErrInvalidMipmapCount,
-		ErrorInvalidHeaderSize:    ErrInvalidHeaderSize,
-		ErrorUnsupportedVersion:   ErrUnsupportedVersion,
-	}
-	for deprecated, err := range aliases {
-		if !errors.Is(deprecated, err) {
-			t.Errorf("%v is not %v", deprecated, err)
-		}
-	}
-}
-
 func TestFlags(t *testing.T) {
 	// Values from VTFLib and the Source SDK
-	flags := map[string][2]uint32{
+	flags := map[string][2]Flags{
 		"PointSampling":         {FlagPointSampling, 0x1},
 		"SRGB":                  {FlagSRGB, 0x40},
 		"NormalMap":             {FlagNormalMap, 0x80},
@@ -232,6 +228,11 @@ func TestFlags(t *testing.T) {
 		if values[0] != values[1] {
 			t.Errorf("Flag%s: got %#x, want %#x", name, values[0], values[1])
 		}
+	}
+
+	set := FlagNormalMap | FlagNoMipmaps
+	if !set.Has(FlagNormalMap) || !set.Has(FlagNormalMap|FlagNoMipmaps) || set.Has(FlagNormalMap|FlagSRGB) {
+		t.Error("Flags.Has does not match set flags")
 	}
 }
 

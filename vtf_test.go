@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/galaco/vtf/format"
+	"github.com/galaco/vtf/v2/format"
 )
 
 const samplePath = "testdata/test.vtf"
@@ -48,27 +48,28 @@ func TestVtf_Header(t *testing.T) {
 	if h.Frames != 1 || h.MipmapCount != 1 {
 		t.Errorf("got %d frames and %d mipmaps, want 1 and 1", h.Frames, h.MipmapCount)
 	}
-	if format.Format(h.HighResImageFormat) != format.BGR888 {
-		t.Errorf("high res format: got %s, want BGR888", format.Format(h.HighResImageFormat))
+	if h.HighResImageFormat != format.BGR888 {
+		t.Errorf("high res format: got %s, want BGR888", h.HighResImageFormat)
 	}
-	if format.Format(h.LowResImageFormat) != format.Dxt1 || h.LowResImageWidth != 16 || h.LowResImageHeight != 4 {
-		t.Errorf("low res: got %s %dx%d, want DXT1 16x4",
-			format.Format(h.LowResImageFormat), h.LowResImageWidth, h.LowResImageHeight)
+	if h.LowResImageFormat != format.Dxt1 || h.LowResImageWidth != 16 || h.LowResImageHeight != 4 {
+		t.Errorf("low res: got %s %dx%d, want DXT1 16x4", h.LowResImageFormat, h.LowResImageWidth, h.LowResImageHeight)
 	}
 	if h.NumResource != 0 {
 		t.Errorf("resources: got %d, want 0 for a 7.2 texture", h.NumResource)
 	}
 }
 
-func TestVtf_HighResImageData(t *testing.T) {
+func TestVtf_Mipmaps(t *testing.T) {
 	raw, v := loadSample(t)
 
-	mipmaps := v.HighResImageData()
-	if len(mipmaps) != 1 || len(mipmaps[0]) != 1 || len(mipmaps[0][0]) != 1 || len(mipmaps[0][0][0]) != 1 {
-		t.Fatal("expected a single mipmap, frame, face and slice")
+	if v.MipmapCount() != 1 || v.FrameCount() != 1 || v.FaceCount() != 1 {
+		t.Fatalf("got %d mipmaps, %d frames and %d faces, want 1 of each", v.MipmapCount(), v.FrameCount(), v.FaceCount())
+	}
+	if w, h, d := v.MipmapDimensions(0); w != 512 || h != 128 || d != 1 {
+		t.Errorf("mipmap 0: got %dx%dx%d, want 512x128x1", w, h, d)
 	}
 	// Header (80) + DXT1 16x4 thumbnail (32)
-	if !bytes.Equal(mipmaps[0][0][0][0], raw[112:]) {
+	if !bytes.Equal(v.Image(), raw[112:]) {
 		t.Error("high resolution data does not match file contents")
 	}
 }
@@ -91,35 +92,40 @@ func TestVtf_Image(t *testing.T) {
 	}
 	assertImages(t, v, images)
 
-	largest := func(frame int) []byte {
-		for _, img := range images {
-			if img.level == 0 && img.frame == frame {
-				return bytes.Repeat([]byte{img.fill}, img.size)
+	for _, img := range images {
+		if img.level == 0 && img.frame == 0 {
+			if !bytes.Equal(v.Image(), bytes.Repeat([]byte{img.fill}, img.size)) {
+				t.Error("Image() did not return the largest mipmap of the first frame")
 			}
 		}
-		t.Fatalf("no image for frame %d", frame)
-		return nil
 	}
 
-	if !bytes.Equal(v.Image(), largest(0)) {
-		t.Error("Image() did not return the largest mipmap of the first frame")
+	if v.MipmapCount() != 5 || v.FrameCount() != 3 || v.FaceCount() != 1 {
+		t.Errorf("got %d mipmaps, %d frames and %d faces, want 5, 3 and 1", v.MipmapCount(), v.FrameCount(), v.FaceCount())
 	}
-	if !bytes.Equal(v.HighestResolutionImageForFrame(2), largest(2)) {
-		t.Error("HighestResolutionImageForFrame(2) did not return the largest mipmap of frame 2")
+	for level, want := range []int{16, 8, 4, 2, 1} {
+		if w, h, d := v.MipmapDimensions(level); w != want || h != want || d != 1 {
+			t.Errorf("mipmap %d: got %dx%dx%d, want %dx%dx1", level, w, h, d, want, want)
+		}
+	}
+}
+
+func TestVtf_MipmapOutOfRange(t *testing.T) {
+	tt := newTestTexture()
+	tt.frames = 2
+	data, _ := tt.build(t)
+	v, err := ReadFromStream(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	mipmaps := v.MipmapsForFrame(1)
-	if len(mipmaps) != int(tt.mipmaps) {
-		t.Fatalf("got %d mipmaps, want %d", len(mipmaps), tt.mipmaps)
+	for _, idx := range [][4]int{{5, 0, 0, 0}, {-1, 0, 0, 0}, {0, 2, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}, {0, 0, 0, -1}} {
+		if _, err := v.Mipmap(idx[0], idx[1], idx[2], idx[3]); !errors.Is(err, ErrOutOfRange) {
+			t.Errorf("Mipmap%v: expected %v, got %v", idx, ErrOutOfRange, err)
+		}
 	}
-	for _, img := range images {
-		if img.frame != 1 {
-			continue
-		}
-		// Mipmaps are indexed smallest first
-		if got := mipmaps[len(mipmaps)-1-img.level]; !bytes.Equal(got, bytes.Repeat([]byte{img.fill}, img.size)) {
-			t.Errorf("mipmap %d of frame 1 does not match", img.level)
-		}
+	if _, err := v.Mipmap(4, 1, 0, 0); err != nil {
+		t.Errorf("Mipmap(4, 1, 0, 0): %v", err)
 	}
 }
 

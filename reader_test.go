@@ -7,7 +7,7 @@ import (
 	"testing"
 	"testing/iotest"
 
-	"github.com/galaco/vtf/format"
+	"github.com/galaco/vtf/v2/format"
 )
 
 func TestRead_Formats(t *testing.T) {
@@ -42,7 +42,7 @@ func TestRead_UnsupportedFormat(t *testing.T) {
 			data, _ := tt.build(t)
 			// Corrupt the stored format, as the builder can't encode an unsupported one
 			h := tt.header()
-			h.HighResImageFormat = uint32(f)
+			h.HighResImageFormat = f
 			copy(data, encodeHeader(t, h))
 
 			_, err := ReadFromStream(bytes.NewReader(data))
@@ -212,8 +212,13 @@ func FuzzReadFromStream(f *testing.F) {
 		}
 		// A decoded texture must be safe to use
 		_ = v.Image()
-		_ = v.MipmapsForFrame(0)
 		_ = v.LowResImageData()
+		for level := 0; level < v.MipmapCount(); level++ {
+			_, _, depth := v.MipmapDimensions(level)
+			if _, err := v.Mipmap(level, v.FrameCount()-1, v.FaceCount()-1, depth-1); err != nil {
+				t.Fatal(err)
+			}
+		}
 	})
 }
 
