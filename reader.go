@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 
 	"github.com/galaco/vtf/format"
 	"github.com/galaco/vtf/internal"
@@ -16,122 +17,160 @@ const (
 	// headerStructSize is the encoded size of Header, which describes every version.
 	// Older versions have smaller headers; fields they lack are left zeroed.
 	headerStructSize = 72
+	// commonHeaderSize is the size of the signature, version and header size, which every version starts with
+	commonHeaderSize = 16
+	minHeaderSize    = 64
+	maxHeaderSize    = 1024
+	// maxPreallocSize is the largest read that is allocated up front. Larger reads grow as
+	// data arrives, so a small file claiming to be huge cannot exhaust memory.
+	maxPreallocSize = 16 << 20
 )
 
 var (
-	// ErrorVtfSignatureMismatch occurs when a stream does not start with the VTF magic signature
-	ErrorVtfSignatureMismatch = errors.New("header signature does not match: VTF\x00")
-	// ErrorTextureDepthNotSupported occurs when attempting to parse a stream with depth > 1
-	//
-	// Deprecated: volume textures are supported, so this error is no longer returned.
-	ErrorTextureDepthNotSupported = errors.New("only vtf textures with depth 1 are supported")
-	// ErrorMipmapSizeMismatch occurs when the file is too small to contain the image data its header describes
-	ErrorMipmapSizeMismatch = errors.New("image data exceeds file size")
-	// ErrorInvalidDimensions occurs when texture dimensions are invalid
-	ErrorInvalidDimensions = errors.New("invalid texture dimensions")
-	// ErrorInvalidMipmapCount occurs when mipmap count is unreasonable
-	ErrorInvalidMipmapCount = errors.New("invalid mipmap count")
-	// ErrorInvalidHeaderSize occurs when header size is invalid
-	ErrorInvalidHeaderSize = errors.New("invalid header size")
-	// ErrorUnsupportedVersion occurs when VTF version is not supported
-	ErrorUnsupportedVersion = errors.New("unsupported VTF version")
-	// ErrorUnsupportedFormat occurs when image data is stored in a format whose size cannot be computed
-	ErrorUnsupportedFormat = internal.ErrUnsupportedFormat
-	// ErrorInvalidResource occurs when the resource directory of a v7.3+ texture is invalid
-	ErrorInvalidResource = errors.New("invalid resource")
+	// ErrSignatureMismatch occurs when a stream does not start with the VTF magic signature
+	ErrSignatureMismatch = errors.New("vtf: header signature does not match: VTF\\x00")
+	// ErrMipmapSizeMismatch occurs when the stream ends before the image data its header describes
+	ErrMipmapSizeMismatch = errors.New("vtf: image data exceeds file size")
+	// ErrInvalidDimensions occurs when texture dimensions are invalid
+	ErrInvalidDimensions = errors.New("vtf: invalid texture dimensions")
+	// ErrInvalidMipmapCount occurs when mipmap count is unreasonable
+	ErrInvalidMipmapCount = errors.New("vtf: invalid mipmap count")
+	// ErrInvalidHeaderSize occurs when header size is invalid
+	ErrInvalidHeaderSize = errors.New("vtf: invalid header size")
+	// ErrUnsupportedVersion occurs when VTF version is not supported
+	ErrUnsupportedVersion = errors.New("vtf: unsupported VTF version")
+	// ErrUnsupportedFormat occurs when image data is stored in a format whose size cannot be computed
+	ErrUnsupportedFormat = internal.ErrUnsupportedFormat
+	// ErrInvalidResource occurs when the resource directory of a v7.3+ texture is invalid
+	ErrInvalidResource = errors.New("vtf: invalid resource")
 )
 
-// Reader reads from a vtf stream
+// Deprecated error names, kept for compatibility.
+var (
+	// Deprecated: use ErrSignatureMismatch.
+	ErrorVtfSignatureMismatch = ErrSignatureMismatch
+	// Deprecated: volume textures are supported, so this error is no longer returned.
+	ErrorTextureDepthNotSupported = errors.New("vtf: only vtf textures with depth 1 are supported")
+	// Deprecated: use ErrMipmapSizeMismatch.
+	ErrorMipmapSizeMismatch = ErrMipmapSizeMismatch
+	// Deprecated: use ErrInvalidDimensions.
+	ErrorInvalidDimensions = ErrInvalidDimensions
+	// Deprecated: use ErrInvalidMipmapCount.
+	ErrorInvalidMipmapCount = ErrInvalidMipmapCount
+	// Deprecated: use ErrInvalidHeaderSize.
+	ErrorInvalidHeaderSize = ErrInvalidHeaderSize
+	// Deprecated: use ErrUnsupportedVersion.
+	ErrorUnsupportedVersion = ErrUnsupportedVersion
+)
+
+// Reader reads a texture from a stream. It reads only the bytes the texture
+// occupies, leaving the stream positioned after it.
 type Reader struct {
 	stream io.Reader
+	// offset is the number of bytes read from stream
+	offset  int64
+	header  *Header
+	entries []resourceEntry
+	vtf     *Vtf
+	err     error
 }
 
-// ReadHeader reads the header of a texture only.
+// NewReader returns a Reader that reads a texture from r
+func NewReader(r io.Reader) *Reader {
+	return &Reader{
+		stream: r,
+	}
+}
+
+// ReadHeader reads and validates the header of a texture, without reading any image data.
+// Read may be called afterwards to read the rest of the texture.
 func (reader *Reader) ReadHeader() (*Header, error) {
-	data, err := io.ReadAll(reader.stream)
-	if err != nil {
-		return nil, err
+	if reader.header == nil {
+		if reader.err == nil {
+			reader.header, reader.entries, reader.err = reader.readHeader()
+		}
+		if reader.err != nil {
+			return nil, reader.err
+		}
 	}
 
-	// Header
-	return reader.parseHeader(data)
+	header := *reader.header
+	return &header, nil
 }
 
 // Read parses vtf image from stream into a usable structure
-// The only error to expect would be if mipmap data size overflows the total file size; normally
-// due to tampered Header data.
+// Expect ErrMipmapSizeMismatch if the stream ends before the image data the header describes,
+// normally due to a truncated file or tampered Header data.
 func (reader *Reader) Read() (*Vtf, error) {
-	data, err := io.ReadAll(reader.stream)
-	if err != nil {
-		return nil, err
+	if reader.vtf == nil && reader.err == nil {
+		reader.vtf, reader.err = reader.read()
 	}
-
-	// Header
-	header, err := reader.parseHeader(data)
-	if err != nil {
-		return nil, err
-	}
-
-	// Validate header to prevent DoS attacks via malicious files
-	if err := reader.validateHeader(header, len(data)); err != nil {
-		return nil, err
-	}
-
-	// Resources - in vtf 7.3+ only
-	entries, err := reader.parseResourceEntries(header, data)
-	if err != nil {
-		return nil, err
-	}
-	resources, err := reader.readResources(entries, data)
-	if err != nil {
-		return nil, err
-	}
-
-	layout, err := reader.locateImages(header, entries, data)
-	if err != nil {
-		return nil, err
-	}
-
-	// Low resolution preview texture
-	lowResImage, err := reader.readLowResolutionMipmap(header, data, layout.lowResOffset)
-	if err != nil {
-		return nil, err
-	}
-
-	// Mipmaps
-	highResImage, err := reader.readMipmaps(header, data[layout.imageOffset:layout.imageEnd])
-	if err != nil {
-		return nil, err
-	}
-
-	return &Vtf{
-		header:                  *header,
-		resources:               resources,
-		lowResolutionImageData:  lowResImage,
-		highResolutionImageData: highResImage,
-	}, nil
+	return reader.vtf, reader.err
 }
 
-// parseHeader reads vtf Header.
-func (reader *Reader) parseHeader(buffer []byte) (*Header, error) {
-	// Signature, version and header size are common to every version
-	if len(buffer) < 16 {
-		return nil, fmt.Errorf("reading header: %w", io.ErrUnexpectedEOF)
-	}
-	if string(buffer[:4]) != vtfSignature {
-		return nil, ErrorVtfSignatureMismatch
+func (reader *Reader) read() (*Vtf, error) {
+	header, err := reader.ReadHeader()
+	if err != nil {
+		return nil, err
 	}
 
+	v := &Vtf{
+		header: *header,
+	}
+
+	// Before 7.3 the thumbnail follows the header, and image data follows the thumbnail
+	if len(reader.entries) == 0 {
+		if v.lowResolutionImageData, err = reader.readLowResolutionMipmap(header); err != nil {
+			return nil, err
+		}
+		if v.highResolutionImageData, err = reader.readMipmaps(header, -1); err != nil {
+			return nil, err
+		}
+		return v, nil
+	}
+
+	if v.resources, v.lowResolutionImageData, v.highResolutionImageData, err = reader.readResources(header); err != nil {
+		return nil, err
+	}
+
+	return v, nil
+}
+
+// readHeader reads and validates the header, including the resource directory of 7.3+ textures
+func (reader *Reader) readHeader() (*Header, []resourceEntry, error) {
+	// Signature, version and header size are common to every version
+	buffer := make([]byte, commonHeaderSize, maxHeaderSize)
+	if err := reader.readFull(buffer); err != nil {
+		return nil, nil, fmt.Errorf("vtf: reading header: %w", err)
+	}
+	if string(buffer[:4]) != vtfSignature {
+		return nil, nil, ErrSignatureMismatch
+	}
+	headerSize := binary.LittleEndian.Uint32(buffer[12:16])
+	if headerSize < minHeaderSize || headerSize > maxHeaderSize {
+		return nil, nil, fmt.Errorf("%w: %d bytes (expected %d-%d)", ErrInvalidHeaderSize, headerSize, minHeaderSize, maxHeaderSize)
+	}
+	buffer = buffer[:headerSize]
+	if err := reader.readFull(buffer[commonHeaderSize:]); err != nil {
+		return nil, nil, fmt.Errorf("vtf: reading header: %w", err)
+	}
+
+	header, err := parseHeader(buffer)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := reader.validateHeader(header); err != nil {
+		return nil, nil, err
+	}
+
+	return header, parseResourceEntries(header, buffer), nil
+}
+
+// parseHeader decodes a complete header
+func parseHeader(buffer []byte) (*Header, error) {
 	// Only decode bytes that belong to the header; anything beyond it is image data
-	headerSize := int(binary.LittleEndian.Uint32(buffer[12:16]))
-	if headerSize > headerStructSize {
-		headerSize = headerStructSize
-	}
-	if headerSize > len(buffer) {
-		return nil, fmt.Errorf("reading header: %w", io.ErrUnexpectedEOF)
-	}
 	headerBytes := make([]byte, headerStructSize)
-	copy(headerBytes, buffer[:headerSize])
+	copy(headerBytes, buffer)
 
 	header := Header{}
 	if err := binary.Read(bytes.NewReader(headerBytes), binary.LittleEndian, &header); err != nil {
@@ -151,24 +190,24 @@ func (reader *Reader) parseHeader(buffer []byte) (*Header, error) {
 }
 
 // validateHeader performs security validation on header fields to prevent DoS attacks
-func (reader *Reader) validateHeader(header *Header, fileSize int) error {
+func (reader *Reader) validateHeader(header *Header) error {
 	// Validate version - only support 7.0 to 7.5
 	majorVersion := header.Version[0]
 	minorVersion := header.Version[1]
 	if majorVersion != 7 || minorVersion > 5 {
-		return fmt.Errorf("%w: %d.%d (only 7.0-7.5 supported)", ErrorUnsupportedVersion, majorVersion, minorVersion)
+		return fmt.Errorf("%w: %d.%d (only 7.0-7.5 supported)", ErrUnsupportedVersion, majorVersion, minorVersion)
 	}
 
 	// Validate dimensions
 	if header.Width == 0 || header.Height == 0 {
-		return fmt.Errorf("%w: width=%d, height=%d (cannot be zero)", ErrorInvalidDimensions, header.Width, header.Height)
+		return fmt.Errorf("%w: width=%d, height=%d (cannot be zero)", ErrInvalidDimensions, header.Width, header.Height)
 	}
 
 	// Prevent excessive memory allocation - Source Engine typically uses max 4096x4096
 	const maxDimension = 16384 // Allow some headroom beyond typical max
 	depth := textureDepth(header)
 	if header.Width > maxDimension || header.Height > maxDimension || depth > maxDimension {
-		return fmt.Errorf("%w: width=%d, height=%d, depth=%d (max %d)", ErrorInvalidDimensions, header.Width, header.Height, depth, maxDimension)
+		return fmt.Errorf("%w: width=%d, height=%d, depth=%d (max %d)", ErrInvalidDimensions, header.Width, header.Height, depth, maxDimension)
 	}
 
 	// Validate mipmap count - should not exceed log2(max(width, height, depth)) + 1
@@ -184,42 +223,37 @@ func (reader *Reader) validateHeader(header *Header, fileSize int) error {
 		maxMipmaps++
 	}
 	if header.MipmapCount == 0 || header.MipmapCount > maxMipmaps {
-		return fmt.Errorf("%w: count=%d, expected 1-%d for %dx%dx%d texture", ErrorInvalidMipmapCount, header.MipmapCount, maxMipmaps, header.Width, header.Height, depth)
+		return fmt.Errorf("%w: count=%d, expected 1-%d for %dx%dx%d texture", ErrInvalidMipmapCount, header.MipmapCount, maxMipmaps, header.Width, header.Height, depth)
 	}
 
 	// Validate header size
-	if header.HeaderSize < 64 || header.HeaderSize > 1024 {
-		return fmt.Errorf("%w: %d bytes (expected 64-1024)", ErrorInvalidHeaderSize, header.HeaderSize)
-	}
-
-	// Validate header size doesn't exceed file size
-	if int(header.HeaderSize) > fileSize {
-		return fmt.Errorf("%w: header size %d exceeds file size %d", ErrorInvalidHeaderSize, header.HeaderSize, fileSize)
+	if header.HeaderSize < minHeaderSize || header.HeaderSize > maxHeaderSize {
+		return fmt.Errorf("%w: %d bytes (expected %d-%d)", ErrInvalidHeaderSize, header.HeaderSize, minHeaderSize, maxHeaderSize)
 	}
 
 	// Validate frame count is reasonable
 	if header.Frames == 0 || header.Frames > 1024 {
-		return fmt.Errorf("%w: frame count %d is invalid (expected 1-1024)", ErrorInvalidDimensions, header.Frames)
+		return fmt.Errorf("%w: frame count %d is invalid (expected 1-1024)", ErrInvalidDimensions, header.Frames)
 	}
 
 	// Validate resource directory (v7.3+) fits in the header
 	if header.NumResource > maxResources {
-		return fmt.Errorf("%w: %d resources (max %d)", ErrorInvalidResource, header.NumResource, maxResources)
+		return fmt.Errorf("%w: %d resources (max %d)", ErrInvalidResource, header.NumResource, maxResources)
 	}
 	if header.NumResource > 0 && resourceDirectoryOffset+header.NumResource*resourceEntrySize > header.HeaderSize {
-		return fmt.Errorf("%w: %d bytes is too small for %d resources", ErrorInvalidHeaderSize, header.HeaderSize, header.NumResource)
+		return fmt.Errorf("%w: %d bytes is too small for %d resources", ErrInvalidHeaderSize, header.HeaderSize, header.NumResource)
 	}
 
 	// Validate low-res dimensions
 	if header.LowResImageWidth > 16 || header.LowResImageHeight > 16 {
-		return fmt.Errorf("%w: low-res dimensions %dx%d exceed expected maximum 16x16", ErrorInvalidDimensions, header.LowResImageWidth, header.LowResImageHeight)
+		return fmt.Errorf("%w: low-res dimensions %dx%d exceed expected maximum 16x16", ErrInvalidDimensions, header.LowResImageWidth, header.LowResImageHeight)
 	}
 
 	return nil
 }
 
-// parseResourceEntries reads the resource directory of 7.3+ images
-func (reader *Reader) parseResourceEntries(header *Header, buffer []byte) ([]resourceEntry, error) {
+// parseResourceEntries decodes the resource directory of 7.3+ images from a complete header
+func parseResourceEntries(header *Header, buffer []byte) []resourceEntry {
 	entries := make([]resourceEntry, header.NumResource)
 	for i := range entries {
 		entry := buffer[resourceDirectoryOffset+i*resourceEntrySize:]
@@ -230,104 +264,102 @@ func (reader *Reader) parseResourceEntries(header *Header, buffer []byte) ([]res
 		}
 	}
 
-	return entries, nil
+	return entries
 }
 
-// readResources reads the contents of every resource, except image data
-func (reader *Reader) readResources(entries []resourceEntry, buffer []byte) ([]Resource, error) {
-	resources := make([]Resource, 0, len(entries))
-	for _, entry := range entries {
-		resource := Resource{Tag: entry.tag, Flags: entry.flags}
+// readResources reads every resource of a 7.3+ texture, including the images
+func (reader *Reader) readResources(header *Header) ([]Resource, []uint8, [][][][][]uint8, error) {
+	resources := make([]Resource, len(reader.entries))
+	var lowResImage []uint8
+	var highResImage [][][][][]uint8
+
+	// The stream is read forwards, so visit data chunks in the order they are stored
+	var chunks []int
+	foundLowRes, foundImage := false, false
+	for i, entry := range reader.entries {
+		resources[i] = Resource{Tag: entry.tag, Flags: entry.flags}
+		if !entry.hasDataChunk() {
+			resources[i].Data = binary.LittleEndian.AppendUint32(nil, entry.offset)
+			continue
+		}
 		switch {
-		case !entry.hasDataChunk():
-			resource.Data = binary.LittleEndian.AppendUint32(nil, entry.offset)
-		case entry.tag == ResourceTagLowResImage || entry.tag == ResourceTagImage:
-			// Image data has no size prefix; it is read by readLowResolutionMipmap and readMipmaps
+		case entry.tag == ResourceTagLowResImage && foundLowRes, entry.tag == ResourceTagImage && foundImage:
+			return nil, nil, nil, fmt.Errorf("%w: duplicate resource %q", ErrInvalidResource, entry.tag)
+		case entry.tag == ResourceTagLowResImage:
+			foundLowRes = true
+		case entry.tag == ResourceTagImage:
+			foundImage = true
+		}
+		chunks = append(chunks, i)
+	}
+	if !foundImage {
+		return nil, nil, nil, fmt.Errorf("%w: no high resolution image resource", ErrInvalidResource)
+	}
+	sort.SliceStable(chunks, func(a, b int) bool {
+		return reader.entries[chunks[a]].offset < reader.entries[chunks[b]].offset
+	})
+
+	for i, idx := range chunks {
+		entry := reader.entries[idx]
+		if err := reader.skipTo(int64(entry.offset)); err != nil {
+			return nil, nil, nil, fmt.Errorf("resource %q: %w", entry.tag, err)
+		}
+
+		var err error
+		switch entry.tag {
+		case ResourceTagLowResImage:
+			lowResImage, err = reader.readLowResolutionMipmap(header)
+		case ResourceTagImage:
+			// Image data has no stored size, but ends no later than the next resource
+			limit := int64(-1)
+			if i+1 < len(chunks) {
+				limit = int64(reader.entries[chunks[i+1]].offset) - int64(entry.offset)
+			}
+			highResImage, err = reader.readMipmaps(header, limit)
 		default:
-			// Data chunks are prefixed with their size
-			start := int64(entry.offset) + 4
-			if start > int64(len(buffer)) {
-				return nil, fmt.Errorf("resource %q: %w", entry.tag, ErrorMipmapSizeMismatch)
+			resources[idx].Data, err = reader.readDataChunk()
+			if err != nil {
+				err = fmt.Errorf("resource %q: %w", entry.tag, err)
 			}
-			end := start + int64(binary.LittleEndian.Uint32(buffer[start-4:start]))
-			if end > int64(len(buffer)) {
-				return nil, fmt.Errorf("resource %q: %w", entry.tag, ErrorMipmapSizeMismatch)
-			}
-			resource.Data = buffer[start:end:end]
 		}
-		resources = append(resources, resource)
-	}
-
-	return resources, nil
-}
-
-// imageLayout locates image data within a texture
-type imageLayout struct {
-	// lowResOffset is the offset of the low resolution image, or -1 if there is none
-	lowResOffset int
-	// imageOffset and imageEnd bound the region that holds the high resolution image
-	imageOffset, imageEnd int
-}
-
-// locateImages finds the low and high resolution images
-func (reader *Reader) locateImages(header *Header, entries []resourceEntry, buffer []byte) (imageLayout, error) {
-	// Before 7.3 the thumbnail follows the header, and image data follows the thumbnail
-	if len(entries) == 0 {
-		lowResSize, err := lowResImageSize(header)
 		if err != nil {
-			return imageLayout{}, err
-		}
-		imageOffset := int(header.HeaderSize) + lowResSize
-		if imageOffset > len(buffer) {
-			return imageLayout{}, fmt.Errorf("low resolution image: %w", ErrorMipmapSizeMismatch)
-		}
-		return imageLayout{lowResOffset: int(header.HeaderSize), imageOffset: imageOffset, imageEnd: len(buffer)}, nil
-	}
-
-	layout := imageLayout{lowResOffset: -1, imageOffset: -1, imageEnd: len(buffer)}
-	for _, entry := range entries {
-		if int64(entry.offset) > int64(len(buffer)) && entry.hasDataChunk() {
-			return imageLayout{}, fmt.Errorf("resource %q: %w", entry.tag, ErrorMipmapSizeMismatch)
-		}
-		switch {
-		case entry.tag == ResourceTagLowResImage && layout.lowResOffset < 0:
-			layout.lowResOffset = int(entry.offset)
-		case entry.tag == ResourceTagImage && layout.imageOffset < 0:
-			layout.imageOffset = int(entry.offset)
-		}
-	}
-	if layout.imageOffset < 0 {
-		return imageLayout{}, fmt.Errorf("%w: no high resolution image resource", ErrorInvalidResource)
-	}
-
-	// Image data has no stored size, but ends no later than the next resource
-	for _, entry := range entries {
-		if offset := int(entry.offset); entry.hasDataChunk() && offset > layout.imageOffset && offset < layout.imageEnd {
-			layout.imageEnd = offset
+			return nil, nil, nil, err
 		}
 	}
 
-	return layout, nil
+	if lowResImage == nil {
+		lowResImage = []uint8{}
+	}
+
+	return resources, lowResImage, highResImage, nil
+}
+
+// readDataChunk reads a size prefixed resource data chunk
+func (reader *Reader) readDataChunk() ([]byte, error) {
+	size := make([]byte, 4)
+	if err := reader.readFull(size); err != nil {
+		return nil, imageReadError(err)
+	}
+
+	return reader.readN(int64(binary.LittleEndian.Uint32(size)))
 }
 
 // readLowResolutionMipmap reads the low resolution texture information
 // This is normally what you see previewed in Hammer texture browser.
 // The largest axis should always be 16 wide/tall. The smallest can be any value,
 // but is padded out to divisible by 4 for Dxt1 compressionn reasons
-func (reader *Reader) readLowResolutionMipmap(header *Header, buffer []byte, offset int) ([]uint8, error) {
+func (reader *Reader) readLowResolutionMipmap(header *Header) ([]uint8, error) {
 	bufferSize, err := lowResImageSize(header)
 	if err != nil {
 		return nil, err
 	}
-	if offset < 0 || bufferSize == 0 {
-		return []uint8{}, nil
+
+	data, err := reader.readN(int64(bufferSize))
+	if err != nil {
+		return nil, fmt.Errorf("low resolution image: %w", err)
 	}
 
-	if bufferSize > len(buffer)-offset {
-		return nil, fmt.Errorf("low resolution image: %w", ErrorMipmapSizeMismatch)
-	}
-
-	return buffer[offset : offset+bufferSize : offset+bufferSize], nil
+	return data, nil
 }
 
 // lowResImageSize returns the size of the low resolution image, which is 0 if there is none
@@ -343,29 +375,20 @@ func lowResImageSize(header *Header) (int, error) {
 		int(header.LowResImageHeight),
 		lowResFormat)
 	if err != nil {
-		return 0, fmt.Errorf("low resolution image: %w: %s", err, lowResFormat)
+		return 0, fmt.Errorf("vtf: low resolution image: %w: %s", err, lowResFormat)
 	}
 
 	return size, nil
 }
 
-// readMipmaps reads all mipmaps from the start of buffer
+// readMipmaps reads all mipmaps. limit is the most bytes the image may occupy, or -1 if unknown.
 // Returned format is a bit odd, but is just a set of flat arrays containing arrays:
 // mipmap[frame[face[slice[RGBA]]]
 // Mipmaps are indexed smallest first, as they are stored on disk.
-func (reader *Reader) readMipmaps(header *Header, buffer []byte) ([][][][][]uint8, error) {
-	numFaces, err := faceCount(header, int64(len(buffer)))
+func (reader *Reader) readMipmaps(header *Header, limit int64) ([][][][][]uint8, error) {
+	buffer, numFaces, err := reader.readImageData(header, limit)
 	if err != nil {
-		return nil, err
-	}
-
-	// Check the whole image is present before allocating
-	totalSize, err := imageDataSize(header, numFaces)
-	if err != nil {
-		return nil, err
-	}
-	if totalSize > int64(len(buffer)) {
-		return nil, fmt.Errorf("high resolution image: %w: need %d bytes, have %d", ErrorMipmapSizeMismatch, totalSize, len(buffer))
+		return nil, fmt.Errorf("high resolution image: %w", err)
 	}
 
 	storedFormat := format.Format(header.HighResImageFormat)
@@ -398,6 +421,57 @@ func (reader *Reader) readMipmaps(header *Header, buffer []byte) ([][][][][]uint
 	return mipMaps, nil
 }
 
+// readImageData reads the high resolution image data, returning it and the number of faces it holds
+func (reader *Reader) readImageData(header *Header, limit int64) ([]byte, int, error) {
+	if header.Flags&FlagEnvironmentMap == 0 {
+		size, err := imageDataSize(header, 1)
+		if err != nil {
+			return nil, 0, err
+		}
+		data, err := reader.readLimited(size, limit)
+		return data, 1, err
+	}
+
+	size6, err := imageDataSize(header, 6)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Cubemaps in 7.1-7.4 may also store a spheremap as a 7th face, which can only
+	// be detected by the size of the image data.
+	if minorVersion := header.Version[1]; minorVersion < 1 || minorVersion >= 5 {
+		data, err := reader.readLimited(size6, limit)
+		return data, 6, err
+	}
+	size7, err := imageDataSize(header, 7)
+	if err != nil {
+		return nil, 0, err
+	}
+	if limit >= 0 {
+		if limit >= size7 {
+			data, err := reader.readN(size7)
+			return data, 7, err
+		}
+		data, err := reader.readLimited(size6, limit)
+		return data, 6, err
+	}
+
+	// The image is the end of the texture, so read the spheremap if the stream holds one
+	data, err := reader.readN(size7)
+	if errors.Is(err, ErrMipmapSizeMismatch) && int64(len(data)) >= size6 {
+		return data[:size6:size6], 6, nil
+	}
+	return data, 7, err
+}
+
+// readLimited reads size bytes, if they fit within limit. A limit of -1 is unlimited.
+func (reader *Reader) readLimited(size, limit int64) ([]byte, error) {
+	if limit >= 0 && size > limit {
+		return nil, fmt.Errorf("%w: need %d bytes, have %d", ErrMipmapSizeMismatch, size, limit)
+	}
+	return reader.readN(size)
+}
+
 // textureDepth returns the number of Z slices in the largest mipmap
 func textureDepth(header *Header) int {
 	// Depth is only stored from 7.2
@@ -405,28 +479,6 @@ func textureDepth(header *Header) int {
 		return 1
 	}
 	return int(header.Depth)
-}
-
-// faceCount returns the number of faces stored per frame. available is the
-// size of the region holding the high resolution image.
-func faceCount(header *Header, available int64) (int, error) {
-	if header.Flags&FlagEnvironmentMap == 0 {
-		return 1, nil
-	}
-
-	// Cubemaps in 7.1-7.4 may also store a spheremap as a 7th face, which can only
-	// be detected by the size of the image data.
-	if minorVersion := header.Version[1]; minorVersion >= 1 && minorVersion < 5 {
-		size, err := imageDataSize(header, 7)
-		if err != nil {
-			return 0, err
-		}
-		if available >= size {
-			return 7, nil
-		}
-	}
-
-	return 6, nil
 }
 
 // imageDataSize returns the size of the high resolution image data for every mipmap, frame, face and slice
@@ -438,10 +490,69 @@ func imageDataSize(header *Header, numFaces int) (int64, error) {
 		width, height, depth := internal.MipmapDimensions(int(header.Width), int(header.Height), textureDepth(header), level)
 		size, err := internal.ComputeSizeOfMipmapData(width, height, storedFormat)
 		if err != nil {
-			return 0, fmt.Errorf("high resolution image: %w: %s", err, storedFormat)
+			return 0, fmt.Errorf("vtf: %w: %s", err, storedFormat)
 		}
 		total += int64(size) * int64(depth) * int64(numFaces) * int64(header.Frames)
 	}
 
 	return total, nil
+}
+
+// readFull fills p from the stream
+func (reader *Reader) readFull(p []byte) error {
+	_, err := reader.readAtMost(p)
+	if err == io.EOF {
+		return io.ErrUnexpectedEOF
+	}
+	return err
+}
+
+// readAtMost fills as much of p as the stream holds
+func (reader *Reader) readAtMost(p []byte) (int, error) {
+	n, err := io.ReadFull(reader.stream, p)
+	reader.offset += int64(n)
+	return n, err
+}
+
+// readN reads exactly n bytes. If the stream ends first, the bytes read are returned
+// along with ErrMipmapSizeMismatch.
+func (reader *Reader) readN(n int64) ([]byte, error) {
+	if n <= maxPreallocSize {
+		data := make([]byte, n)
+		read, err := reader.readAtMost(data)
+		if err != nil {
+			return data[:read:read], imageReadError(err)
+		}
+		return data, nil
+	}
+
+	buffer := bytes.NewBuffer(make([]byte, 0, maxPreallocSize))
+	copied, err := io.CopyN(buffer, reader.stream, n)
+	reader.offset += copied
+	data := buffer.Bytes()
+	if err != nil {
+		return data, imageReadError(err)
+	}
+	return data[:n:n], nil
+}
+
+// skipTo discards data up to offset
+func (reader *Reader) skipTo(offset int64) error {
+	if offset < reader.offset {
+		return fmt.Errorf("%w: data at offset %d overlaps previous data ending at %d", ErrInvalidResource, offset, reader.offset)
+	}
+	skipped, err := io.CopyN(io.Discard, reader.stream, offset-reader.offset)
+	reader.offset += skipped
+	if err != nil {
+		return imageReadError(err)
+	}
+	return nil
+}
+
+// imageReadError reports the stream ending early as ErrMipmapSizeMismatch
+func imageReadError(err error) error {
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return ErrMipmapSizeMismatch
+	}
+	return err
 }

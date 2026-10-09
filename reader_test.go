@@ -46,8 +46,8 @@ func TestRead_UnsupportedFormat(t *testing.T) {
 			copy(data, encodeHeader(t, h))
 
 			_, err := ReadFromStream(bytes.NewReader(data))
-			if !errors.Is(err, ErrorUnsupportedFormat) {
-				t.Errorf("expected %v, got %v", ErrorUnsupportedFormat, err)
+			if !errors.Is(err, ErrUnsupportedFormat) {
+				t.Errorf("expected %v, got %v", ErrUnsupportedFormat, err)
 			}
 		})
 	}
@@ -150,10 +150,10 @@ func TestRead_Truncated(t *testing.T) {
 	for _, n := range []int{0, 15, 16, 79, 80, 100, 111, 112, 1000, len(raw) - 1} {
 		_, err := ReadFromStream(bytes.NewReader(raw[:n]))
 		switch {
-		case n < 80 && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, ErrorInvalidHeaderSize):
+		case n < 80 && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, ErrInvalidHeaderSize):
 			t.Errorf("sample truncated to %d bytes: expected truncated header error, got %v", n, err)
-		case n >= 80 && !errors.Is(err, ErrorMipmapSizeMismatch):
-			t.Errorf("sample truncated to %d bytes: expected %v, got %v", n, ErrorMipmapSizeMismatch, err)
+		case n >= 80 && !errors.Is(err, ErrMipmapSizeMismatch):
+			t.Errorf("sample truncated to %d bytes: expected %v, got %v", n, ErrMipmapSizeMismatch, err)
 		}
 	}
 }
@@ -162,8 +162,8 @@ func TestRead_SignatureMismatch(t *testing.T) {
 	raw, _ := loadSample(t)
 	data := append([]byte("VTX\x00"), raw[4:]...)
 
-	if _, err := ReadFromStream(bytes.NewReader(data)); !errors.Is(err, ErrorVtfSignatureMismatch) {
-		t.Errorf("expected %v, got %v", ErrorVtfSignatureMismatch, err)
+	if _, err := ReadFromStream(bytes.NewReader(data)); !errors.Is(err, ErrSignatureMismatch) {
+		t.Errorf("expected %v, got %v", ErrSignatureMismatch, err)
 	}
 }
 

@@ -134,56 +134,56 @@ func TestVtf_ValidationErrors(t *testing.T) {
 			modifyHeader: func(h *Header) {
 				h.Width = 0
 			},
-			expectedError: ErrorInvalidDimensions,
+			expectedError: ErrInvalidDimensions,
 		},
 		{
 			name: "zero height",
 			modifyHeader: func(h *Header) {
 				h.Height = 0
 			},
-			expectedError: ErrorInvalidDimensions,
+			expectedError: ErrInvalidDimensions,
 		},
 		{
 			name: "excessive width",
 			modifyHeader: func(h *Header) {
 				h.Width = 20000
 			},
-			expectedError: ErrorInvalidDimensions,
+			expectedError: ErrInvalidDimensions,
 		},
 		{
 			name: "excessive height",
 			modifyHeader: func(h *Header) {
 				h.Height = 20000
 			},
-			expectedError: ErrorInvalidDimensions,
+			expectedError: ErrInvalidDimensions,
 		},
 		{
 			name: "zero mipmap count",
 			modifyHeader: func(h *Header) {
 				h.MipmapCount = 0
 			},
-			expectedError: ErrorInvalidMipmapCount,
+			expectedError: ErrInvalidMipmapCount,
 		},
 		{
 			name: "excessive mipmap count",
 			modifyHeader: func(h *Header) {
 				h.MipmapCount = 100
 			},
-			expectedError: ErrorInvalidMipmapCount,
+			expectedError: ErrInvalidMipmapCount,
 		},
 		{
 			name: "zero frame count",
 			modifyHeader: func(h *Header) {
 				h.Frames = 0
 			},
-			expectedError: ErrorInvalidDimensions,
+			expectedError: ErrInvalidDimensions,
 		},
 		{
 			name: "excessive frame count",
 			modifyHeader: func(h *Header) {
 				h.Frames = 1025
 			},
-			expectedError: ErrorInvalidDimensions,
+			expectedError: ErrInvalidDimensions,
 		},
 		{
 			name: "unsupported major version",
@@ -191,42 +191,42 @@ func TestVtf_ValidationErrors(t *testing.T) {
 				h.Version[0] = 6
 				h.Version[1] = 0
 			},
-			expectedError: ErrorUnsupportedVersion,
+			expectedError: ErrUnsupportedVersion,
 		},
 		{
 			name: "unsupported minor version",
 			modifyHeader: func(h *Header) {
 				h.Version[1] = 6
 			},
-			expectedError: ErrorUnsupportedVersion,
+			expectedError: ErrUnsupportedVersion,
 		},
 		{
 			name: "invalid header size",
 			modifyHeader: func(h *Header) {
 				h.HeaderSize = 10
 			},
-			expectedError: ErrorInvalidHeaderSize,
+			expectedError: ErrInvalidHeaderSize,
 		},
 		{
 			name: "excessive header size",
 			modifyHeader: func(h *Header) {
 				h.HeaderSize = 2048
 			},
-			expectedError: ErrorInvalidHeaderSize,
+			expectedError: ErrInvalidHeaderSize,
 		},
 		{
 			name: "excessive low res dimensions",
 			modifyHeader: func(h *Header) {
 				h.LowResImageWidth = 32
 			},
-			expectedError: ErrorInvalidDimensions,
+			expectedError: ErrInvalidDimensions,
 		},
 		{
 			name: "excessive depth",
 			modifyHeader: func(h *Header) {
 				h.Depth = 20000
 			},
-			expectedError: ErrorInvalidDimensions,
+			expectedError: ErrInvalidDimensions,
 		},
 		{
 			name: "excessive mipmap count for depth",
@@ -234,7 +234,7 @@ func TestVtf_ValidationErrors(t *testing.T) {
 				h.Width, h.Height, h.Depth = 4, 4, 16
 				h.MipmapCount = 6
 			},
-			expectedError: ErrorInvalidMipmapCount,
+			expectedError: ErrInvalidMipmapCount,
 		},
 		{
 			name: "excessive resource count",
@@ -243,7 +243,7 @@ func TestVtf_ValidationErrors(t *testing.T) {
 				h.NumResource = 33
 				h.HeaderSize = 1000
 			},
-			expectedError: ErrorInvalidResource,
+			expectedError: ErrInvalidResource,
 		},
 		{
 			name: "resources exceed header size",
@@ -252,7 +252,7 @@ func TestVtf_ValidationErrors(t *testing.T) {
 				h.NumResource = 3
 				h.HeaderSize = 96
 			},
-			expectedError: ErrorInvalidHeaderSize,
+			expectedError: ErrInvalidHeaderSize,
 		},
 	}
 
@@ -267,7 +267,7 @@ func TestVtf_ValidationErrors(t *testing.T) {
 			// Modify it to be invalid
 			tt.modifyHeader(&header)
 			// Validate should fail
-			err := reader.validateHeader(&header, 10000)
+			err := reader.validateHeader(&header)
 			if err == nil {
 				t.Fatal("expected error but got none")
 			}

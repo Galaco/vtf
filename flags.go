@@ -1,68 +1,76 @@
 package vtf
 
+// Texture flags, as stored in Header.Flags.
+// Some bits have been reused across engine branches, so several names share a value.
 const (
-	// FlagPointSampling
+	// FlagPointSampling disables filtering
 	FlagPointSampling = 0x0001
-	// FlagTrilinearSampling
+	// FlagTrilinearSampling enables trilinear filtering
 	FlagTrilinearSampling = 0x0002
-	// FlagClampS
+	// FlagClampS clamps S (U) coordinates
 	FlagClampS = 0x0004
-	// FlagClampT
+	// FlagClampT clamps T (V) coordinates
 	FlagClampT = 0x0008
-	// FlagAnisotropicFiltering
+	// FlagAnisotropicFiltering enables anisotropic filtering
 	FlagAnisotropicFiltering = 0x0010
-	// FlagHintDXT5
+	// FlagHintDXT5 hints that the texture should be compressed as DXT5
 	FlagHintDXT5 = 0x0020
-	// FlagPWLCorrected
+	// FlagSRGB marks the texture as sRGB (Source 2013). Shares a value with FlagPWLCorrected and FlagNoCompress
+	FlagSRGB = 0x0040
+	// FlagPWLCorrected marks the texture as PWL corrected (later engine branches). Shares a value with FlagSRGB
 	FlagPWLCorrected = 0x0040
-	// FlagSRGB
-	FlagSRGB = 0xFFFF // n/a
-	// FlagNoCompress
+	// FlagNoCompress is deprecated. Shares a value with FlagSRGB
 	FlagNoCompress = 0x0040
-	// FlagNormalMap
+	// FlagNormalMap marks the texture as a normal map
 	FlagNormalMap = 0x0080
-	// FlagNoMipmaps
+	// FlagNoMipmaps disables mipmapping
 	FlagNoMipmaps = 0x0100
-	// FlagNoLevelOfDetail
+	// FlagNoLevelOfDetail excludes the texture from texture level of detail settings
 	FlagNoLevelOfDetail = 0x0200
-	// FlagNoMinimumMipmap
+	// FlagNoMinimumMipmap loads every mipmap, ignoring the minimum mipmap setting
 	FlagNoMinimumMipmap = 0x0400
-	// FlagProcedural
+	// FlagProcedural marks the texture as procedurally generated
 	FlagProcedural = 0x0800
-	// FlagOneBitAlpha
+	// FlagOneBitAlpha is set when alpha is either fully opaque or transparent
 	FlagOneBitAlpha = 0x1000
-	// FlagEightBitAlpha
+	// FlagEightBitAlpha is set when the texture has an 8 bit alpha channel
 	FlagEightBitAlpha = 0x2000
-	// FlagEnvironmentMap
+	// FlagEnvironmentMap marks the texture as a cubemap
 	FlagEnvironmentMap = 0x4000
-	// FlagRenderTarget
+	// FlagRenderTarget marks the texture as a render target
 	FlagRenderTarget = 0x8000
-	// FlagDepthRenderTarget
+	// FlagDepthRenderTarget marks the texture as a depth render target
 	FlagDepthRenderTarget = 0x10000
-	// FlagNoDebugOverride
+	// FlagNoDebugOverride prevents debug overrides of the texture
 	FlagNoDebugOverride = 0x20000
-	// FlagSingleCopy
+	// FlagSingleCopy loads the texture once, shared between materials
 	FlagSingleCopy = 0x40000
-	// FlagPreSRGB
+	// FlagPreSRGB marks the texture as pre-sRGB (later engine branches). Shares a value with FlagOneOverMipmapLevelInAlpha
 	FlagPreSRGB = 0x80000
-	// FlagOneOverMipmapLevelInAlpha
+	// FlagOneOverMipmapLevelInAlpha is deprecated. Shares a value with FlagPreSRGB
 	FlagOneOverMipmapLevelInAlpha = 0x80000
-	// FlagPreMultiplyColorByOneOverMipmapLevel
+	// FlagPreMultiplyColorByOneOverMipmapLevel is deprecated
 	FlagPreMultiplyColorByOneOverMipmapLevel = 0x100000
-	// FlagNormalToDuDv
+	// FlagNormalToDuDv is deprecated
 	FlagNormalToDuDv = 0x200000
-	// FlagAlphaTestMipmapGeneration
+	// FlagAlphaTestMipmapGeneration is deprecated
 	FlagAlphaTestMipmapGeneration = 0x400000
-	// FlagNoDepthBuffer
+	// FlagNoDepthBuffer disables the depth buffer of a render target
 	FlagNoDepthBuffer = 0x800000
-	// FlagNiceFiltered
+	// FlagNiceFiltered is deprecated
 	FlagNiceFiltered = 0x1000000
-	// FlagClampU
+	// FlagClampU clamps U (R) coordinates of volume textures
 	FlagClampU = 0x2000000
-	// FlagVertexTexture
+	// FlagVertexTexture marks the texture as usable from vertex shaders
 	FlagVertexTexture = 0x4000000
-	// FlagSSBump
+	// FlagSSBump marks the texture as a self shadowing bump map
 	FlagSSBump = 0x8000000
-	// FlagBorder
+	// FlagUnfilterableOK is deprecated
+	FlagUnfilterableOK = 0x10000000
+	// FlagBorder clamps to the border colour
 	FlagBorder = 0x20000000
+	// FlagSpecVarRed is deprecated
+	FlagSpecVarRed = 0x40000000
+	// FlagSpecVarAlpha is deprecated
+	FlagSpecVarAlpha = 0x80000000
 )

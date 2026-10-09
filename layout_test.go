@@ -53,8 +53,8 @@ func TestRead_CubemapTruncated(t *testing.T) {
 	tt.faces = 6
 	data, _ := tt.build(t)
 
-	if _, err := ReadFromStream(bytes.NewReader(data[:len(data)-1])); !errors.Is(err, ErrorMipmapSizeMismatch) {
-		t.Errorf("expected %v, got %v", ErrorMipmapSizeMismatch, err)
+	if _, err := ReadFromStream(bytes.NewReader(data[:len(data)-1])); !errors.Is(err, ErrMipmapSizeMismatch) {
+		t.Errorf("expected %v, got %v", ErrMipmapSizeMismatch, err)
 	}
 }
 
@@ -205,19 +205,19 @@ func TestRead_InvalidResources(t *testing.T) {
 		{
 			name:      "missing image",
 			resources: []testResource{{tag: ResourceTagLowResImage}},
-			wantErr:   ErrorInvalidResource,
+			wantErr:   ErrInvalidResource,
 		},
 		{
 			name:      "image offset out of bounds",
 			resources: []testResource{{tag: ResourceTagLowResImage}, {tag: ResourceTagImage}},
 			corrupt:   func(data []byte) { putUint32(data[92:], 0xFFFFFFF0) },
-			wantErr:   ErrorMipmapSizeMismatch,
+			wantErr:   ErrMipmapSizeMismatch,
 		},
 		{
 			name:      "low res offset out of bounds",
 			resources: []testResource{{tag: ResourceTagLowResImage}, {tag: ResourceTagImage}},
 			corrupt:   func(data []byte) { putUint32(data[84:], uint32(len(data))-4) },
-			wantErr:   ErrorMipmapSizeMismatch,
+			wantErr:   ErrMipmapSizeMismatch,
 		},
 		{
 			name: "data chunk size out of bounds",
@@ -227,7 +227,7 @@ func TestRead_InvalidResources(t *testing.T) {
 				{tag: ResourceTagKeyValues, data: []byte("kv")},
 			},
 			corrupt: func(data []byte) { putUint32(data[len(data)-6:], 1000) },
-			wantErr: ErrorMipmapSizeMismatch,
+			wantErr: ErrMipmapSizeMismatch,
 		},
 		{
 			name: "data chunk image overlap",
@@ -238,7 +238,7 @@ func TestRead_InvalidResources(t *testing.T) {
 			},
 			// Point the key values into the middle of the image, so the image is cut short
 			corrupt: func(data []byte) { putUint32(data[92:], uint32(len(data))-16) },
-			wantErr: ErrorMipmapSizeMismatch,
+			wantErr: ErrMipmapSizeMismatch,
 		},
 	}
 	for _, tc := range tests {

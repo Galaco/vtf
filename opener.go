@@ -6,13 +6,9 @@ import (
 )
 
 // ReadFromStream loads a vtf from standard
-// io.Reader stream
+// io.Reader stream. Only the bytes the texture occupies are read.
 func ReadFromStream(stream io.Reader) (*Vtf, error) {
-	reader := &Reader{
-		stream: stream,
-	}
-
-	return reader.Read()
+	return NewReader(stream).Read()
 }
 
 // ReadFromFile is a wrapper for ReadFromStream wrapper to load directly from
@@ -25,6 +21,5 @@ func ReadFromFile(filepath string) (*Vtf, error) {
 
 	defer file.Close()
 
-	v, err := ReadFromStream(file)
-	return v, err
+	return ReadFromStream(file)
 }
